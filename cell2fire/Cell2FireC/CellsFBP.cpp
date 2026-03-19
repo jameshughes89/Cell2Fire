@@ -76,7 +76,6 @@ CellsFBP::CellsFBP(int _id, double _area, std::vector<int> _coord,
     this->angleDict = std::unordered_map<int, double>();
     this->ROSAngleDir = std::unordered_map<int, double>();
     this->distToCenter = std::unordered_map<int, double>();
-    this->angleToNb = std::unordered_map<int, int>();
 }
 
 
@@ -92,48 +91,49 @@ CellsFBP::CellsFBP(int _id, double _area, std::vector<int> _coord,
     AvailSet       int set
 */
 void CellsFBP::initializeFireFields(std::vector<std::vector<int>> & coordCells,    // TODO: should probably make a coordinate type
-												std::unordered_set<int> & availSet) 				// WORKING CHECK OK
+												std::unordered_set<int> & availSet,
+												int rows, int cols, int spreadRadius) 				// WORKING CHECK OK
 {  
-    for (auto & nb : this->adjacents) {
-        // CP Default value is replaced: None = -1
-		//std::cout << "DEBUG1: adjacent: " << nb.second << std::endl;
-        if (nb.second != -1) {
-            int a = -1 * coordCells[nb.second - 1][0] + coordCells[this->id][0];
-            int b = -1 * coordCells[nb.second - 1][1] + coordCells[this->id][1];
-            
-            int angle = -1;
-            if (a == 0) {
-                if (b >= 0) 
-                    angle = 270; 
-                else 
-                    angle = 90;
+    this->angleDict.clear();
+    this->ROSAngleDir.clear();
+    this->distToCenter.clear();
+    this->fireProgress.clear();
+
+    int radius = spreadRadius;
+    if (radius < 1) {
+        radius = 1;
+    }
+    const int cellIndex = this->realId - 1;
+    const int row = cellIndex / cols;
+    const int col = cellIndex % cols;
+    const double radToDeg = 180.0 / M_PI;
+
+    for (int dr = -radius; dr <= radius; ++dr) {
+        for (int dc = -radius; dc <= radius; ++dc) {
+            if (dr == 0 && dc == 0) {
+                continue;
             }
-            else if (b == 0) {
-                if (a >= 0)
-                    angle = 180;
-                else
-                    angle = 0;
-            }
-            else {
-                // TODO: check this logi
-                double radToDeg = 180 / M_PI;
-                // TODO: i think all the negatives and abs cancel out
-                double temp = std::atan(b * 1.0 / a) * radToDeg;
-                if (a > 0)
-                    temp += 180;
-                if (a < 0 && b > 0) 
-                    temp += 360;
-                angle = temp;
+            const int nr = row + dr;
+            const int nc = col + dc;
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) {
+                continue;
             }
 
-            this->angleDict[nb.second] = angle;
-            if (availSet.find(nb.second) != availSet.end()) {
-                // TODO: cannot be None, replaced None = -1   and ROSAngleDir has a double inside 
-                this->ROSAngleDir[angle] = -1;
+            const int nbId = nr * cols + nc + 1;
+            int a = -1 * coordCells[nbId - 1][0] + coordCells[this->id][0];
+            int b = -1 * coordCells[nbId - 1][1] + coordCells[this->id][1];
+
+            double angle = std::atan2(-1.0 * b, -1.0 * a) * radToDeg;
+            if (angle < 0.0) {
+                angle += 360.0;
             }
-            this->angleToNb[angle] = nb.second;
-            this->fireProgress[nb.second] = 0.0;
-            this->distToCenter[nb.second] = std::sqrt(a * a + b * b) * this->_ctr2ctrdist;
+
+            this->angleDict[nbId] = angle;
+            if (availSet.find(nbId) != availSet.end()) {
+                this->ROSAngleDir[nbId] = -1;
+            }
+            this->fireProgress[nbId] = 0.0;
+            this->distToCenter[nbId] = std::sqrt(a * a + b * b) * this->_ctr2ctrdist;
         }
     }
 }
@@ -158,8 +158,8 @@ void CellsFBP::initializeFireFields(std::vector<std::vector<int>> & coordCells, 
 	Returns       void
  */		
 void CellsFBP::ros_distr_old(double thetafire, double forward, double flank, double back) {   // WORKING CHECK OK
-    for (auto & angle : this->ROSAngleDir) {
-        double offset = std::abs(angle.first - thetafire);
+    for (auto & nbRos : this->ROSAngleDir) {
+        double offset = std::abs(this->angleDict[nbRos.first] - thetafire);
         
         double base = ((int)(offset)) / 90 * 90;
         double result;
@@ -174,7 +174,7 @@ void CellsFBP::ros_distr_old(double thetafire, double forward, double flank, dou
         } else if (offset > 270 && offset < 360) {
             result = this->allocate(offset, 270, flank, forward);
         }
-        this->ROSAngleDir[angle.first] = result;
+        this->ROSAngleDir[nbRos.first] = result;
     }	
 }	
 
@@ -224,8 +224,8 @@ void CellsFBP::ros_distr(double thetafire, double forward, double flank, double 
 	//std::cout << "b:" << b << std::endl; 
 	
 	// Ros allocation for each angle inside the dictionary
-	for (auto & angle : this->ROSAngleDir) {
-        double offset = angle.first - thetafire;
+	for (auto & nbRos : this->ROSAngleDir) {
+        double offset = this->angleDict[nbRos.first] - thetafire;
 		
 		if (offset < 0) {
             offset += 360;
@@ -233,7 +233,7 @@ void CellsFBP::ros_distr(double thetafire, double forward, double flank, double 
 		if (offset > 360) {
             offset -= 360;
         }
-        this->ROSAngleDir[angle.first] = rhoTheta(offset, a, b) * EFactor;
+        this->ROSAngleDir[nbRos.first] = rhoTheta(offset, a, b) * EFactor;
     }	
 }			
 		
@@ -430,13 +430,14 @@ std::vector<int> CellsFBP::manageFire(int period, std::unordered_set<int> & Avai
 					  args->EFactor);
         //std::cout << "Sale de Ros Dist" << std::endl;		
 		
-		// Fire progress using ROS from burning cell, not the neighbors //
+		// Fire progress uses the source cell ROS for all outgoing arcs.
+		// This intentionally retains the paper assumption (same source ROS carried into neighbors).
        // vector<double> toPop = vector<double>();
         
 		// this is a iterator through the keyset of a dictionary
         for (auto&  _angle : this->ROSAngleDir) {
-            double angle = _angle.first;
-            int nb = angleToNb[angle];
+            int nb = _angle.first;
+            double angle = this->angleDict[nb];
             double ros = (1 + args->ROSCV * ROSRV) * _angle.second;
 			
 			if(std::isnan(ros)){
@@ -673,13 +674,14 @@ std::vector<int> CellsFBP::manageFireBBO(int period, std::unordered_set<int> & A
 					  EllipseFactors[3]);
         //std::cout << "Sale de Ros Dist" << std::endl;		
 		
-		// Fire progress using ROS from burning cell, not the neighbors //
+		// Fire progress uses the source cell ROS for all outgoing arcs.
+		// This intentionally retains the paper assumption (same source ROS carried into neighbors).
        // vector<double> toPop = vector<double>();
         
 		// this is a iterator through the keyset of a dictionary
         for (auto&  _angle : this->ROSAngleDir) {
-            double angle = _angle.first;
-            int nb = angleToNb[angle];
+            int nb = _angle.first;
+            double angle = this->angleDict[nb];
             double ros = (1 + args->ROSCV * ROSRV) * _angle.second;
 			
             if (args->verbose) {
@@ -945,14 +947,6 @@ void CellsFBP::print_info() {    // WORKING CHECK OK
 	}
 	std::cout << std::endl;
 	
-	
-	printf("angleToNb Dict: ");
-	for (auto & nb : this->angleToNb){
-		std::cout << " " << nb.first << " : " << nb.second;
-	}
-	std::cout << std::endl;
-	
-	
 	printf("fireProgress Dict: ");
 	for (auto & nb : this->fireProgress){
 		std::cout << " " << nb.first << " : " << nb.second;
@@ -966,5 +960,3 @@ void CellsFBP::print_info() {    // WORKING CHECK OK
 	}
 	std::cout << std::endl;
 }
-
-

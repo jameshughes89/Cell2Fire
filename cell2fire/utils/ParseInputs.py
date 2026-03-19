@@ -61,6 +61,11 @@ def make_parser():
                         dest="IgRadius",
                         type=int,
                         default=0) 
+    parser.add_argument("--SpreadRad",
+                        help="Neighborhood radius for fire spread (1 uses immediate 8-neighbors)",
+                        dest="SpreadRadius",
+                        type=int,
+                        default=1)
     parser.add_argument("--gridsStep",
                         help="Grids are generated every n time steps",
                         dest="gridsStep",
@@ -401,4 +406,3 @@ def InitCells(NCells, FTypes2, ColorsDict, CellsGrid4, CellsGrid3):
             Colors.append(ColorsDict[str(CellsGrid3[i])])
 
     return FTypeCells, StatusCells, RealCells, Colors
-
