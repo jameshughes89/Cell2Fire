@@ -3,10 +3,11 @@ name: expl_heuristic # Kotaro Yama
 # dropped the Docker container use (DLW April 2025)
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, bitrot]
   pull_request:
-    branches: [main]
+    branches: [main, bitrot]
 
 defaults:
   run:
