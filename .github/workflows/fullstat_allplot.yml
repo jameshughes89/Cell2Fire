@@ -4,9 +4,9 @@ name: fullstat_allplot # Kotaro Yama
 on:
   workflow_dispatch:
   push:
-    branches: [main, bitrot]
+    branches: [main]
   pull_request:
-    branches: [main, bitrot]
+    branches: [main]
 
 defaults:
   run:
