@@ -10,6 +10,8 @@ there is not even the implied warranty of fitness for use.
 
 # Introduction
 
+A more actively maintained fork of this repository is [C2FK](https://github.com/fire2a/C2FK).
+
 Cell2Fire is a new cell-based forest and wildland landscape fire spread simulator.
 The fire environment is characterized by partitioning the landscape into a large number of homogeneous cells and specifying the fuel, weather, fuel moisture and topography attributes of each cell.
 Fire spread within each cell is assumed to be elliptical and governed by spread rates predicted by any independent fire spread model (e.g. the Canadian Forest Fire Behavior Prediction System).
