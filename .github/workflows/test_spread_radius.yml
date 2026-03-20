@@ -1,4 +1,4 @@
-name: test_datagenerator
+name: test_spread_radius
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ defaults:
 
 jobs:
   build:
-    name: test_datagenerator
+    name: test_spread_radius
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -35,26 +35,23 @@ jobs:
         run: |
           cd cell2fire/Cell2FireC
           make
+
       - name: install dependencies
         run: |
           pip install -r requirements.txt
           pip install flake8
+          pip install pytest
+
       - name: setup the program
         run: |
           pip install -e .
-  
+
       - name: Lint with flake8
         run: |
-          # stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      - name: Install pytest
-        run: pip install pytest
 
       - name: run tests
         run: |
           cd tests
-          pytest test_datagenentor.py
-
-
+          pytest test_spread_radius.py

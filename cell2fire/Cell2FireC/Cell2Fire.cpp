@@ -431,7 +431,7 @@ void Cell2Fire::InitCell(int id){
 	it2 = this->Cells_Obj.find(id);
 	
 	// Initialize the fire fields for the selected cel
-	it2->second.initializeFireFields(this->coordCells, this->availCells);
+	it2->second.initializeFireFields(this->coordCells, this->availCells, this->rows, this->cols, this->args.SpreadRadius);
 	
 	// Print info for debugging
 	if (this->args.verbose) it2->second.print_info();
@@ -992,14 +992,14 @@ void Cell2Fire::GetMessages(std::unordered_map<int, std::vector<int>> sendMessag
 					burntList.insert(it->second.realId);
 					
 					// Cleaning step
-					int cellNum = it->second.realId - 1;
-					for (auto & angle : it->second.angleToNb) {
-						int origToNew = angle.first;
-						int newToOrig = (origToNew + 180) % 360;
-						int adjCellNum = angle.second;  // Check
+					for (auto & nbAndAngle : it->second.angleDict) {
+						int adjCellNum = nbAndAngle.first;
 						auto adjIt = Cells_Obj.find(adjCellNum);
 						if (adjIt != Cells_Obj.end()) {
-							adjIt->second.ROSAngleDir.erase(newToOrig);
+							adjIt->second.ROSAngleDir.erase(it->second.realId);
+							adjIt->second.fireProgress.erase(it->second.realId);
+							adjIt->second.angleDict.erase(it->second.realId);
+							adjIt->second.distToCenter.erase(it->second.realId);
 						} 
 					}
 				}
