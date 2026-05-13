@@ -8,6 +8,24 @@ there is not even the implied warranty of fitness for use.
 
 ![](https://github.com/cell2fire/Cell2Fire/workflows/TestExamples/badge.svg)
 
+# This Fork
+
+This fork extends Cell2Fire with **per-timestep reactive treatment allocation**, intended as a
+validation environment for GP-evolved suppression strategies from
+[wildfireGP](https://github.com/jameshughes89/wildfireGP).
+
+The original Cell2Fire only supports static pre-treatment plans (harvest masks computed before
+ignition). This fork adds:
+
+1. A per-timestep hook in the C++ simulation loop that scores all unburned burnable cells and
+   treats the top K before each spread step.
+2. Feature extraction for the primitives used by the GP: fuel level, distance to fire,
+   wind–fire alignment, and unburnable neighbour count.
+3. A pluggable C++ scoring function where a GP-evolved expression can be hardcoded for
+   validation runs.
+
+See `CLAUDE.md` for full implementation context.
+
 # Introduction
 
 A more actively maintained fork of this repository is [C2FK](https://github.com/fire2a/C2FK).
