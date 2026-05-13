@@ -8,10 +8,6 @@ on:
   pull_request:
     branches: [main]
 
-defaults:
-  run:
-    shell: bash -l {0}
-
 jobs:
   build:
     name: test_h2
@@ -21,11 +17,9 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v3
-      - uses: conda-incubator/setup-miniconda@v2
+      - uses: actions/setup-python@v5
         with:
-          activate-environment: test_env
-          python-version: 3.12
-          auto-activate-base: false
+          python-version: '3.12'
 
       - name: Install Boost
         run: sudo apt-get update && sudo apt-get install -y libboost-all-dev
