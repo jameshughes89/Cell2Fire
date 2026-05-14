@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libboost-all-dev \
     libeigen3-dev \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONPATH=/cell2fire
 
 WORKDIR /cell2fire
 
