@@ -6,4 +6,5 @@ seaborn
 opencv-python
 tqdm
 deap
+networkx
 sphinx_rtd_theme
