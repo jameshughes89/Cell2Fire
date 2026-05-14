@@ -70,13 +70,28 @@ ISSN={2624-893X}
 
 # Installation
 
-Installation may require some familiarity with C++, make, and Python. 
-- cd Cell2Fire/cell2fire/Cell2FireC
-- (edit Makefile to have the correct path to Eigen)
-- make
-- cd ../..
-- pip install -r requirements.txt  # might not do anything
-- pip install -e .
+Installation may require some familiarity with C++, make, and Python.
+
+System packages (Ubuntu/Debian):
+```
+sudo apt-get install -y build-essential libboost-all-dev libeigen3-dev
+```
+
+Build the C++ simulator and install the Python package into a virtualenv:
+```
+cd Cell2Fire/cell2fire/Cell2FireC
+# (edit Makefile to have the correct path to Eigen, if not /usr/include/eigen3)
+make
+cd ../..
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+Alternatively, a `Dockerfile` is provided that bundles all system and Python
+dependencies — see the comment at the top of the file for the build/run
+commands.
 
 # Usage
 In order to run the simulator (after installation and cd to  Cell2Fire/cell2fire), the following command can be used:
