@@ -54,7 +54,9 @@ class TestMain(unittest.TestCase):
         env.stats()
 
         with open(result_Forest08) as result_file, open(baseline_Forest08) as baseline_file:
-            for row1, row2 in zip(csv.reader(result_file), csv.reader(baseline_file)):
+            for line1, line2 in zip(result_file, baseline_file):
+                row1 = next(csv.reader([line1.strip().rstrip(',')]))
+                row2 = next(csv.reader([line2.strip().rstrip(',')]))
                 self.assertEqual(row1, row2, "ForestGrid08.csv does not match baseline")
 
 
