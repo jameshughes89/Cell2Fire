@@ -8,7 +8,6 @@ Before you run this, run:
 That will create the input files. The test then re-runs with --onlyProcessing
 (skips the C++ call) and checks ForestGrid08.csv against the baseline.
 """
-import csv
 import unittest
 import os.path
 from cell2fire.utils.ParseInputs import make_parser
@@ -55,9 +54,8 @@ class TestMain(unittest.TestCase):
 
         with open(result_Forest08) as result_file, open(baseline_Forest08) as baseline_file:
             for line1, line2 in zip(result_file, baseline_file):
-                row1 = next(csv.reader([line1.strip().rstrip(',')]))
-                row2 = next(csv.reader([line2.strip().rstrip(',')]))
-                self.assertEqual(row1, row2, "ForestGrid08.csv does not match baseline")
+                self.assertEqual(line1.strip().rstrip(','), line2.strip().rstrip(','),
+                                 "ForestGrid08.csv does not match baseline")
 
 
 if __name__ == "__main__":
