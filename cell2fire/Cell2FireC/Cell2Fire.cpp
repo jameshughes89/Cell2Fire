@@ -964,6 +964,10 @@ void Cell2Fire::GetMessages(std::unordered_map<int, std::vector<int>> sendMessag
 		for (auto & _bc : globalMessagesList) {
 			//printf("\n\nWE ARE DEBUGGING!!!! CELL TO BE ANALYZED GET BURNT IS %d\n", _bc.first);
 			int bc = _bc.first;
+			// Treated cells act as a firebreak: drop messages before any init/ignition work.
+			if (this->statusCells[bc - 1] == 5) {
+				continue;
+			}
 			if (this->burntCells.find(bc) == this->burntCells.end()) {
 				if (this->Cells_Obj.find(bc) == this->Cells_Obj.end()) {
 					

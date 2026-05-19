@@ -33,12 +33,13 @@ CellsFBP::CellsFBP(int _id, double _area, std::vector<int> _coord,
 							int _realId)
 {
 	// Global "dictionaries" (vectors) for status and types
-	// Status: 0: "Available", 1: "Burning", 2: "Burnt", 3: "Harvested", 4:"Non Fuel"
+	// Status: 0: "Available", 1: "Burning", 2: "Burnt", 3: "Harvested", 4:"Non Fuel", 5: "Treated"
 	this->StatusD[0] = "Available";
 	this->StatusD[1] = "Burning";
 	this->StatusD[2] = "Burnt";
 	this->StatusD[3] = "Harvested";
 	this->StatusD[4] = "Non Fuel";
+	this->StatusD[5] = "Treated";
 	
 	// FTypeD: 0: "NonBurnable", 1: "Normal", 2: "Burnable
 	this->FTypeD[0] = "NonBurnable";
@@ -763,7 +764,12 @@ std::vector<int> CellsFBP::manageFireBBO(int period, std::unordered_set<int> & A
  */
 	
 bool CellsFBP::get_burned(int period, int season, int NMsg, inputs df[],  fuel_coefs * coef, arguments * args, weatherDF * wdf_ptr) {
-    if (args->verbose) { 
+    // Treated cells act as a firebreak: ignore incoming fire messages.
+    if (this->status == 5) {
+        return false;
+    }
+
+    if (args->verbose) {
         std::cout << "ROS Threshold get_burned method" << std::endl;
 		std::cout << "ROSThreshold: " << args->ROSThreshold << std::endl;
     }

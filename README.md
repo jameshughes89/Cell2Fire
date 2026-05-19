@@ -10,21 +10,43 @@ there is not even the implied warranty of fitness for use.
 
 # This Fork
 
-This fork extends Cell2Fire with **per-timestep reactive treatment allocation**, intended as a
-validation environment for GP-evolved suppression strategies from
-[wildfireGP](https://github.com/jameshughes89/wildfireGP).
+This fork extends Cell2Fire with **per-timestep reactive treatment allocation**, providing a
+validation environment for GP-evolved wildfire suppression strategies from
+[wildfireGP](https://github.com/jameshughes89/wildfireGP). The original Cell2Fire only supports
+static pre-treatment plans (harvest masks computed before ignition); this fork adds a reactive
+treatment pathway so that a GP-scored allocation policy can act on the simulation each timestep,
+mirroring how strategies are evaluated in wildfireGP but on a physically realistic spread model
+(Canadian FBP fuel system, elliptical spread, real weather inputs).
 
-The original Cell2Fire only supports static pre-treatment plans (harvest masks computed before
-ignition). This fork adds:
+## What the fork adds
 
-1. A per-timestep hook in the C++ simulation loop that scores all unburned burnable cells and
-   treats the top K before each spread step.
-2. Feature extraction for the primitives used by the GP: fuel level, distance to fire,
+1. **A `Treated` cell state.** Cells move into a new firebreak state mid-simulation. Treated
+   cells never ignite — incoming fire messages are dropped both in the receiver path
+   (`Cell2Fire::GetMessages`) and defensively in `CellsFBP::get_burned`. Treated is distinct
+   from `Harvested` so initial harvest plans and reactive treatments remain visually separable
+   in output grids.
+2. **A per-timestep treatment hook** in the C++ simulation loop that scores all unburned
+   burnable cells and converts the top K to `Treated` before each spread step, with a
+   configurable intervention delay and budget.
+3. **Feature extraction** for the four primitives used by the GP: fuel level, distance to fire,
    wind–fire alignment, and unburnable neighbour count.
-3. A pluggable C++ scoring function where a GP-evolved expression can be hardcoded for
-   validation runs.
+4. **A pluggable C++ scoring function** where a GP-evolved expression is hardcoded for
+   validation runs. The current expression is the dominant program from the first wildfireGP run
+   (pop=500, gens=100):
+   `min(fuel_level - (wind_fire_alignment + distance_to_fire), unburnable_neighbour_count)`.
 
-See `CLAUDE.md` for full implementation context.
+## Status
+
+| Component | Status |
+|---|---|
+| Build / CI on Python 3.12 (pip, no conda) | done |
+| Dockerfile (libgl1, libglib2.0-0, bind-mount workflow) | done |
+| `Treated` cell state + receiver-side firebreak guard | done |
+| Per-timestep `ApplyTreatments()` hook | in progress |
+| Feature extraction (fuel, dist-to-fire, wind alignment, unburnable neighbours) | in progress |
+| CLI args for treatment budget `K` and intervention delay `N` | in progress |
+
+See `CLAUDE.md` for the full implementation spec.
 
 # Introduction
 

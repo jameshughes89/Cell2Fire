@@ -32,7 +32,7 @@ class CellsFBP {
 		std::unordered_map<std::string, int> adjacents; // CP: dictionary {string: [int array]}
 		
 		string FTypeD[3];
-        string StatusD[5];
+        string StatusD[6];
 		
 		// mutable
         int status;
