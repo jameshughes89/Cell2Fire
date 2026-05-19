@@ -16,7 +16,7 @@ OS = Ubuntu
 MODE=Serial
 PARALLEL_DIR = parallel_code/Cell2FireParallel/Cell2FireC_Parallel
 
-Cell2Fire: Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o
+Cell2Fire: Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o Treatments.o
 
 # This will cause 'Extraneous text after `ifneq' directive'
 ifneq ($(OS), Ubuntu) && ($(OS), OSX))
@@ -28,12 +28,12 @@ $(info MODE must be either Serial or Parallel)
 endif
 
 ifeq ($(MODE), Serial)
-		$(CC) -o $@ $(LIBS) Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o
+		$(CC) -o $@ $(LIBS) Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o Treatments.o
 else
 ifeq ($(OS), Ubuntu)
-	$(CC) -o $@ $(LIBS) -fopenmp Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o
+	$(CC) -o $@ $(LIBS) -fopenmp Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o Treatments.o
 else
-	$(CC) -o $@ $(LIBS) -Xclang -fopenmp -lomp Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o
+	$(CC) -o $@ $(LIBS) -Xclang -fopenmp -lomp Cell2Fire.o CellsFBP.o FBPfunc5_NoDebug.o SpottingFBP.o ReadCSV.o ReadArgs.o Lightning.o WriteCSV.o Ellipse.o Treatments.o
 endif
 endif
 
@@ -77,9 +77,12 @@ Forest.o: Forest.cpp Forest.h
 WriteCSV.o: WriteCSV.cpp WriteCSV.h
 	$(CC) -c $(CFLAGS) WriteCSV.cpp
 
-Ellipse.o: Ellipse.cpp Ellipse.h 
-	$(CC) -c $(LIBS) $(CFLAGS) Ellipse.cpp 
+Ellipse.o: Ellipse.cpp Ellipse.h
+	$(CC) -c $(LIBS) $(CFLAGS) Ellipse.cpp
+
+Treatments.o: Treatments.cpp Treatments.h CellsFBP.h ReadArgs.h ReadCSV.h
+	$(CC) -c $(CFLAGS) Treatments.cpp
 
 
 clean:
-	rm Lightning.o ReadArgs.o ReadCSV.o FBPfunc5_NoDebug.o Cell2Fire.o CellsFBP.o Cell2Fire SpottingFBP.o Forest.o WriteCSV.o Ellipse.o *.gch
+	rm -f Lightning.o ReadArgs.o ReadCSV.o FBPfunc5_NoDebug.o Cell2Fire.o CellsFBP.o Cell2Fire SpottingFBP.o Forest.o WriteCSV.o Ellipse.o Treatments.o *.gch

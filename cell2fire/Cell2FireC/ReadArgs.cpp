@@ -289,9 +289,25 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 	char * seed = getCmdOption(argv, argv + argc, "--seed");
     if (seed){
         printf("seed: %s \n", seed);
-		args_ptr->seed = std::stoi (seed ,&sz); 
+		args_ptr->seed = std::stoi (seed ,&sz);
     }
 	else args_ptr->seed = dseed;
+
+	//--TreatmentBudget  (int, cells treated per fire period; 0 disables)
+	char * tbudget = getCmdOption(argv, argv + argc, "--TreatmentBudget");
+	if (tbudget){
+		printf("TreatmentBudget: %s \n", tbudget);
+		args_ptr->TreatmentBudget = std::stoi(tbudget, &sz);
+	}
+	else args_ptr->TreatmentBudget = 0;
+
+	//--TreatmentDelay  (int, fire periods to skip before treating)
+	char * tdelay = getCmdOption(argv, argv + argc, "--TreatmentDelay");
+	if (tdelay){
+		printf("TreatmentDelay: %s \n", tdelay);
+		args_ptr->TreatmentDelay = std::stoi(tdelay, &sz);
+	}
+	else args_ptr->TreatmentDelay = 0;
 	
 	// Populate structure
 	// Strings 
@@ -359,8 +375,7 @@ void printArgs(arguments args){
 	std::cout << "Statistics: " << args.Stats << std::endl; 
 	std::cout << "noOutput: " << args.NoOutput << std::endl; 
 	std::cout << "verbose: " << args.verbose << std::endl; 
-	std::cout << "seed: " << args.seed << std::endl; 
-	
-	
-	
+	std::cout << "seed: " << args.seed << std::endl;
+	std::cout << "TreatmentBudget: " << args.TreatmentBudget << std::endl;
+	std::cout << "TreatmentDelay: " << args.TreatmentDelay << std::endl;
 }

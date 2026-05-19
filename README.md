@@ -11,29 +11,46 @@ there is not even the implied warranty of fitness for use.
 # This Fork
 
 This fork extends Cell2Fire with **per-timestep reactive treatment allocation**, providing a
-validation environment for GP-evolved wildfire suppression strategies from
-[wildfireGP](https://github.com/jameshughes89/wildfireGP). The original Cell2Fire only supports
-static pre-treatment plans (harvest masks computed before ignition); this fork adds a reactive
-treatment pathway so that a GP-scored allocation policy can act on the simulation each timestep,
-mirroring how strategies are evaluated in wildfireGP but on a physically realistic spread model
-(Canadian FBP fuel system, elliptical spread, real weather inputs).
+validation environment for scoring-based wildfire suppression strategies on a physically
+realistic spread model (Canadian FBP fuel system, elliptical spread, real weather inputs).
+The original Cell2Fire only supports static pre-treatment plans (harvest masks computed before
+ignition); this fork adds a reactive treatment pathway so that an arbitrary cell-scoring
+expression can act on the simulation each timestep.
 
 ## What the fork adds
 
 1. **A `Treated` cell state.** Cells move into a new firebreak state mid-simulation. Treated
    cells never ignite — incoming fire messages are dropped both in the receiver path
    (`Cell2Fire::GetMessages`) and defensively in `CellsFBP::get_burned`. Treated is distinct
-   from `Harvested` so initial harvest plans and reactive treatments remain visually separable
-   in output grids.
+   from `Harvested` so initial harvest plans and reactive treatments remain separable in
+   output grids (Treated → `-2`, Harvested → `-1`).
 2. **A per-timestep treatment hook** in the C++ simulation loop that scores all unburned
    burnable cells and converts the top K to `Treated` before each spread step, with a
    configurable intervention delay and budget.
-3. **Feature extraction** for the four primitives used by the GP: fuel level, distance to fire,
-   wind–fire alignment, and unburnable neighbour count.
-4. **A pluggable C++ scoring function** where a GP-evolved expression is hardcoded for
-   validation runs. The current expression is the dominant program from the first wildfireGP run
-   (pop=500, gens=100):
+3. **Feature extraction** for the four cell-level primitives: fuel level (Crown Fuel Load from
+   the FBP fuel coefficients), Euclidean distance to the nearest burning cell, wind–fire
+   alignment (wind vector dotted with the unit vector from the cell toward the nearest burning
+   cell), and 4-connected unburnable neighbour count. The unburnable counts and fuel levels
+   are precomputed once at construction.
+4. **A pluggable C++ scoring function** in `cell2fire/Cell2FireC/Treatments.cpp`. The current
+   hardcoded expression is:
    `min(fuel_level - (wind_fire_alignment + distance_to_fire), unburnable_neighbour_count)`.
+
+## Treatment CLI flags
+
+| Flag | Type | Default | Meaning |
+|---|---|---|---|
+| `--TreatmentBudget` | int | `0` | Cells treated per fire period. `0` disables the hook entirely (fork is fully backward-compatible). |
+| `--TreatmentDelay`  | int | `0` | Number of fire periods to skip before the first treatment is applied. |
+
+Example (dogrib with a budget of 20 starting at fire period 1):
+```
+./Cell2Fire --input-instance-folder ../data/dogrib/ --output-folder ../results/dogrib_treated \
+  --ignitions --sim-years 1 --nsims 1 --grids --final-grid --Fire-Period-Length 1.0 \
+  --weather rows --nweathers 1 --output-messages --ROS-CV 0.0 --seed 123 --IgnitionRad 0 \
+  --HFactor 1.0 --FFactor 1.0 --BFactor 1.0 --EFactor 1.0 \
+  --TreatmentBudget 20 --TreatmentDelay 1
+```
 
 ## Status
 
@@ -42,9 +59,9 @@ mirroring how strategies are evaluated in wildfireGP but on a physically realist
 | Build / CI on Python 3.12 (pip, no conda) | done |
 | Dockerfile (libgl1, libglib2.0-0, bind-mount workflow) | done |
 | `Treated` cell state + receiver-side firebreak guard | done |
-| Per-timestep `ApplyTreatments()` hook | in progress |
-| Feature extraction (fuel, dist-to-fire, wind alignment, unburnable neighbours) | in progress |
-| CLI args for treatment budget `K` and intervention delay `N` | in progress |
+| Per-timestep `ApplyTreatments()` hook | done |
+| Feature extraction (fuel, dist-to-fire, wind alignment, unburnable neighbours) | done |
+| CLI args for treatment budget `K` and intervention delay `N` | done |
 
 See `CLAUDE.md` for the full implementation spec.
 

@@ -9,6 +9,7 @@
 #include "WriteCSV.h"
 #include "ReadArgs.h"
 #include "Lightning.h"
+#include "Treatments.h"
 
 // Include libraries
 #include <stdio.h>
@@ -84,11 +85,16 @@ class Cell2Fire {
 		 std::vector<std::vector<int>> IgnitionSets;
 		 
 		 // Sets
-		 std::unordered_set<int> availCells;				
-		 std::unordered_set<int> nonBurnableCells; 	
+		 std::unordered_set<int> availCells;
+		 std::unordered_set<int> nonBurnableCells;
 		 std::unordered_set<int> burningCells;
 		 std::unordered_set<int> burntCells;
 		 std::unordered_set<int> harvestCells;
+		 std::unordered_set<int> treatedCells;
+
+		 // Per-cell features precomputed once for the reactive treatment hook
+		 std::vector<int> unburnableNbrCounts;
+		 std::vector<double> fuelLevels;
 		 
 		 // Cells Dictionary
 		 std::unordered_map<int, CellsFBP> Cells_Obj;

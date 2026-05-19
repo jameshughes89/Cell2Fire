@@ -410,6 +410,12 @@ Cell2Fire::Cell2Fire(arguments _args) : CSVWeather(_args.InFolder + "Weather.csv
 			}
          }
      }
+
+	// Precompute static features for the reactive treatment hook. Non-burnable
+	// neighbour counts depend only on initial NF/ND placement (state 4) and fuel
+	// levels depend only on the per-cell fuel type — both invariant across sims.
+	precomputeUnburnableNbrCounts(this->unburnableNbrCounts, this->statusCells, this->rows, this->cols);
+	precomputeFuelLevels(this->fuelLevels, df, this->coef_ptr, this->nCells);
 }
 
 
@@ -536,7 +542,8 @@ void Cell2Fire::reset(int rnumber, double rnumber2){
 	this->burningCells.clear();
 	this->burntCells.clear();
 	this->harvestCells.clear();
-	
+	this->treatedCells.clear();
+
 	// Harvest Cells
 	for (auto it = HarvestedCells.begin(); it != HarvestedCells.end(); it++ ){
 		for (auto & it2 : it->second){
@@ -1169,7 +1176,7 @@ void Cell2Fire::outputGrid(){
 	std::string gridName;
 	std::vector<int> statusCells2(this->nCells, 0); //(long int, int);
 	
-	// Update status 
+	// Update status
 	for (auto & bc : this->burningCells){
 			statusCells2[bc-1] = 1;
 	}
@@ -1178,6 +1185,9 @@ void Cell2Fire::outputGrid(){
 	}
 	for (auto & hc : this->harvestCells){
 			statusCells2[hc-1] = -1;
+	}
+	for (auto & tc : this->treatedCells){
+			statusCells2[tc-1] = -2;
 	}
 		
 	if (this->gridNumber < 10){
@@ -1257,10 +1267,21 @@ void Cell2Fire::Step(std::default_random_engine generator){
 	
 	// New operational step (ONE fire period)
 	if (this->fire_period[this->year - 1] > 0 && !this->done){
+		// Reactive treatment hook: score available cells and convert the top K to
+		// Treated firebreaks before this period's fire spreads.
+		// Gated on a positive budget and on having reached the intervention delay.
+		if (this->args.TreatmentBudget > 0
+		    && this->fire_period[this->year - 1] >= this->args.TreatmentDelay) {
+			ApplyTreatments(this->availCells, this->treatedCells, this->statusCells,
+			                this->burningCells, this->coordCells,
+			                this->unburnableNbrCounts, this->fuelLevels,
+			                wdf[this->weatherPeriod], this->args.TreatmentBudget);
+		}
+
 		// Fire Spread (one time step of RL - Operational)
 		// Send messages after ignition (does not advance time!)
 		std::unordered_map<int, std::vector<int>> SendMessageList = this->SendMessages();
-		
+
 		// Get Message
 		this->GetMessages(SendMessageList);
 	}
