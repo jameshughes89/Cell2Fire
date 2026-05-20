@@ -7,6 +7,8 @@
 #include <limits>
 #include <random>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -141,14 +143,10 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         }
     }
 
-    struct Candidate {
-        int id;
-        double score;
-    };
-    std::vector<Candidate> candidates;
-    candidates.reserve(availCells.size());
-
-    for (int id : availCells) {
+    // Per-cell feature + score computation. Called for initial scoring and for
+    // rescoring the 8 neighbours of a just-treated cell (the only cells whose
+    // has_treated_neighbour / unburnable_neighbour_count can have changed).
+    auto computeScore = [&](int id) -> double {
         const int idx = id - 1;
         const int row = idx / cols;
         const int col = idx % cols;
@@ -160,10 +158,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             const int dr = std::abs(bIdx / cols - row);
             const int dc = std::abs(bIdx % cols - col);
             const int d = (dr > dc) ? dr : dc;
-            if (d < bestDist) {
-                bestDist = d;
-                bestFireIdx = bIdx;
-            }
+            if (d < bestDist) { bestDist = d; bestFireIdx = bIdx; }
         }
 
         double wind_align = 0.0;
@@ -172,9 +167,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             // row increases southward, so flip sign for north-positive math frame
             const double dy = static_cast<double>(row - bestFireIdx / cols);
             const double mag = std::sqrt(dx * dx + dy * dy);
-            if (mag > 0.0) {
-                wind_align = (wind_x * dx + wind_y * dy) / mag;
-            }
+            if (mag > 0.0) wind_align = (wind_x * dx + wind_y * dy) / mag;
         }
 
         double has_treated = 0.0;
@@ -192,33 +185,65 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         }
 
         Features f;
-        f.fuel_level = fuelLevels[idx];
-        f.elevation = elevations[idx];
+        f.fuel_level    = fuelLevels[idx];
+        f.elevation     = elevations[idx];
         f.distance_to_fire = (bestDist == std::numeric_limits<int>::max())
                              ? INF : static_cast<double>(bestDist);
         f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
                                       ? INF : static_cast<double>(burnableDist[idx]);
-        f.wind_fire_alignment = wind_align;
-        f.has_treated_neighbour = has_treated;
+        f.wind_fire_alignment       = wind_align;
+        f.has_treated_neighbour     = has_treated;
         f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
 
-        double score = (strategy == "proximity") ? scoreProximity(f) : scoreScored(f);
-        candidates.push_back({id, score});
-    }
+        const double s = (strategy == "proximity") ? scoreProximity(f) : scoreScored(f);
+        return std::isfinite(s) ? s : -INF;
+    };
 
-    // All K picks see the same pre-step snapshot; has_treated_neighbour only
-    // reflects treatments from prior steps, not earlier picks within this call.
-    const int k = std::min<int>(budget, static_cast<int>(candidates.size()));
-    std::partial_sort(candidates.begin(), candidates.begin() + k, candidates.end(),
-                      [](const Candidate& a, const Candidate& b) {
-                          return a.score > b.score;
-                      });
+    // Shuffle first so equal-scoring candidates are broken randomly; stable_sort
+    // preserves that order through re-sorts after each placement.
+    std::vector<int> ids(availCells.begin(), availCells.end());
+    std::shuffle(ids.begin(), ids.end(), generator);
 
-    for (int i = 0; i < k; ++i) {
-        const int id = candidates[i].id;
+    std::unordered_map<int, double> scores;
+    scores.reserve(ids.size());
+    for (int id : ids) scores[id] = computeScore(id);
+
+    std::unordered_set<int> candidateSet(ids.begin(), ids.end());
+
+    // Sort ascending so pop_back() yields the highest scorer.
+    std::stable_sort(ids.begin(), ids.end(),
+        [&](int a, int b) { return scores[a] < scores[b]; });
+
+    int treated = 0;
+    while (treated < budget && !ids.empty()) {
+        const int id = ids.back();
+        ids.pop_back();
+        candidateSet.erase(id);
+
         statusCells[id - 1] = 5;
         availCells.erase(id);
         treatedCells.insert(id);
+        ++treated;
+
+        // Rescore only the 8 neighbours whose features may have changed.
+        const int idx = id - 1;
+        const int row = idx / cols;
+        const int col = idx % cols;
+        bool any = false;
+        for (int k = 0; k < 8; ++k) {
+            const int nr = row + DR8[k];
+            const int nc = col + DC8[k];
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+            const int nId = nr * cols + nc + 1;
+            if (candidateSet.count(nId)) {
+                scores[nId] = computeScore(nId);
+                any = true;
+            }
+        }
+        if (any) {
+            std::stable_sort(ids.begin(), ids.end(),
+                [&](int a, int b) { return scores[a] < scores[b]; });
+        }
     }
-    return k;
+    return treated;
 }
