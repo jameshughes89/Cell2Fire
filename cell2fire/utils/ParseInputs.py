@@ -334,6 +334,11 @@ def make_parser():
                         dest="TreatmentDelay",
                         type=int,
                         default=0)
+    parser.add_argument("--TreatmentStrategy",
+                        help="Treatment selection strategy: scored | proximity | random | none",
+                        dest="TreatmentStrategy",
+                        type=str,
+                        default="scored")
     return parser
 
 

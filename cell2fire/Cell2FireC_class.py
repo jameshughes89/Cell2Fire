@@ -76,6 +76,7 @@ class Cell2FireC:
                    '--HarvestPlan', self.args.HCells if(self.args.HCells is not None) else '',
                    '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
+                   '--TreatmentStrategy', self.args.TreatmentStrategy,
 				   '--verbose' if (self.args.verbose) else '',]
         
         # Output log
@@ -122,6 +123,7 @@ class Cell2FireC:
                    '--HarvestPlan', HarvestPlanFile if(HarvestPlanFile is not None) else '',
                    '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
+                   '--TreatmentStrategy', self.args.TreatmentStrategy,
 				   '--verbose' if (self.args.verbose) else '']
         
         # Output log

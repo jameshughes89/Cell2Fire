@@ -5,6 +5,8 @@
 #include <cstring>
 #include <deque>
 #include <limits>
+#include <random>
+#include <string>
 #include <vector>
 
 namespace {
@@ -41,11 +43,17 @@ void normalizeInPlace(std::vector<double>& v) {
     }
 }
 
-double scoreCell(const Features& f) {
+double scoreScored(const Features& f) {
     return f.fuel_level
          + 3.0 * f.has_treated_neighbour
          + f.elevation
          - f.burnable_distance_to_fire;
+}
+
+const double ANCHOR_WEIGHT = 0.1;
+
+double scoreProximity(const Features& f) {
+    return -f.burnable_distance_to_fire + ANCHOR_WEIGHT * f.has_treated_neighbour;
 }
 
 }  // namespace
@@ -78,9 +86,22 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     const std::vector<double>& elevations,
                     const weatherDF& weather,
                     int rows, int cols,
-                    int budget) {
-    if (budget <= 0 || availCells.empty() || burningCells.empty()) {
-        return 0;
+                    int budget,
+                    const std::string& strategy,
+                    std::default_random_engine& generator) {
+    if (strategy == "none") return 0;
+    if (budget <= 0 || availCells.empty() || burningCells.empty()) return 0;
+
+    if (strategy == "random") {
+        std::vector<int> ids(availCells.begin(), availCells.end());
+        std::shuffle(ids.begin(), ids.end(), generator);
+        const int k = std::min<int>(budget, static_cast<int>(ids.size()));
+        for (int i = 0; i < k; ++i) {
+            statusCells[ids[i] - 1] = 5;
+            availCells.erase(ids[i]);
+            treatedCells.insert(ids[i]);
+        }
+        return k;
     }
 
     const int nCells = rows * cols;
@@ -181,7 +202,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         f.has_treated_neighbour = has_treated;
         f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
 
-        candidates.push_back({id, scoreCell(f)});
+        double score = (strategy == "proximity") ? scoreProximity(f) : scoreScored(f);
+        candidates.push_back({id, score});
     }
 
     // All K picks see the same pre-step snapshot; has_treated_neighbour only

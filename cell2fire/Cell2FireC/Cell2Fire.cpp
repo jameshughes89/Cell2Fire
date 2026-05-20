@@ -1277,7 +1277,9 @@ void Cell2Fire::Step(std::default_random_engine generator){
 			                this->fuelLevels, this->elevations,
 			                wdf[this->weatherPeriod],
 			                this->rows, this->cols,
-			                this->args.TreatmentBudget);
+			                this->args.TreatmentBudget,
+			                this->args.TreatmentStrategy,
+			                generator);
 		}
 
 		// Fire Spread (one time step of RL - Operational)

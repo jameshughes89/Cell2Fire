@@ -308,6 +308,14 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 		args_ptr->TreatmentDelay = std::stoi(tdelay, &sz);
 	}
 	else args_ptr->TreatmentDelay = 0;
+
+	//--TreatmentStrategy  (string: scored | proximity | random | none)
+	char * tstrategy = getCmdOption(argv, argv + argc, "--TreatmentStrategy");
+	if (tstrategy){
+		printf("TreatmentStrategy: %s \n", tstrategy);
+		args_ptr->TreatmentStrategy = tstrategy;
+	}
+	else args_ptr->TreatmentStrategy = "scored";
 	
 	// Populate structure
 	// Strings 
@@ -378,4 +386,5 @@ void printArgs(arguments args){
 	std::cout << "seed: " << args.seed << std::endl;
 	std::cout << "TreatmentBudget: " << args.TreatmentBudget << std::endl;
 	std::cout << "TreatmentDelay: " << args.TreatmentDelay << std::endl;
+	std::cout << "TreatmentStrategy: " << args.TreatmentStrategy << std::endl;
 }

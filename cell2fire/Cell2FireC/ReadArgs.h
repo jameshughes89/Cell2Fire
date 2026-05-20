@@ -19,6 +19,7 @@ typedef struct{
 	float ROSCV, ROSThreshold, HFIThreshold, HFactor, FFactor, BFactor, EFactor, FirePeriodLen;
 	int MinutesPerWP, MaxFirePeriods, TotalYears, TotalSims, NWeatherFiles, IgnitionRadius, SpreadRadius, seed;
 	int TreatmentBudget, TreatmentDelay;
+	std::string TreatmentStrategy;
 	std::unordered_set<int>  HCells, BCells;
 } arguments;
 

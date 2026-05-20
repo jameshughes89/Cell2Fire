@@ -5,6 +5,8 @@
 #include "ReadArgs.h"
 #include "ReadCSV.h"
 
+#include <random>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -25,6 +27,7 @@ void precomputeFuelLevels(std::vector<double>& fuelLevels,
 void precomputeElevations(std::vector<double>& elevations,
                           const inputs* df, int nCells);
 
+// Strategies: "scored", "proximity", "random", "none"
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,
@@ -34,6 +37,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     const std::vector<double>& elevations,
                     const weatherDF& weather,
                     int rows, int cols,
-                    int budget);
+                    int budget,
+                    const std::string& strategy,
+                    std::default_random_engine& generator);
 
 #endif
