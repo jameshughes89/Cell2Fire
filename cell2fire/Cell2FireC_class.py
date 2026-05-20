@@ -74,6 +74,8 @@ class Cell2FireC:
                    '--HFI-Threshold', str(self.args.HFI_Threshold),
                    '--bbo' if (self.args.BBO) else '',
                    '--HarvestPlan', self.args.HCells if(self.args.HCells is not None) else '',
+                   '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
+                   '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
 				   '--verbose' if (self.args.verbose) else '',]
         
         # Output log
@@ -118,6 +120,8 @@ class Cell2FireC:
                    '--HFI-Threshold', str(self.args.HFI_Threshold),
                    '--bbo' if (self.args.BBO) else '',
                    '--HarvestPlan', HarvestPlanFile if(HarvestPlanFile is not None) else '',
+                   '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
+                   '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
 				   '--verbose' if (self.args.verbose) else '']
         
         # Output log

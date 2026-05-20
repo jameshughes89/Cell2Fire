@@ -321,6 +321,19 @@ def make_parser():
                         dest="BurningLen",
                         type=float,
                         default=-1.0)
+
+    # Reactive treatment hook (per-timestep firebreak allocation)
+    parser.add_argument("--TreatmentBudget",
+                        help="Cells treated per fire period (Treated firebreak state). "
+                             "Default 0 disables the hook.",
+                        dest="TreatmentBudget",
+                        type=int,
+                        default=0)
+    parser.add_argument("--TreatmentDelay",
+                        help="Fire periods to skip before the first treatment is applied.",
+                        dest="TreatmentDelay",
+                        type=int,
+                        default=0)
     return parser
 
 
