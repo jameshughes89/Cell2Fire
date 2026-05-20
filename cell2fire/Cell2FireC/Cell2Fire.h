@@ -93,8 +93,8 @@ class Cell2Fire {
 		 std::unordered_set<int> treatedCells;
 
 		 // Per-cell features precomputed once for the reactive treatment hook
-		 std::vector<int> unburnableNbrCounts;
 		 std::vector<double> fuelLevels;
+		 std::vector<double> elevations;
 		 
 		 // Cells Dictionary
 		 std::unordered_map<int, CellsFBP> Cells_Obj;

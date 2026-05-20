@@ -414,8 +414,8 @@ Cell2Fire::Cell2Fire(arguments _args) : CSVWeather(_args.InFolder + "Weather.csv
 	// Precompute static features for the reactive treatment hook. Non-burnable
 	// neighbour counts depend only on initial NF/ND placement (state 4) and fuel
 	// levels depend only on the per-cell fuel type — both invariant across sims.
-	precomputeUnburnableNbrCounts(this->unburnableNbrCounts, this->statusCells, this->rows, this->cols);
 	precomputeFuelLevels(this->fuelLevels, df, this->coef_ptr, this->nCells);
+	precomputeElevations(this->elevations, df, this->nCells);
 }
 
 
@@ -1273,9 +1273,11 @@ void Cell2Fire::Step(std::default_random_engine generator){
 		if (this->args.TreatmentBudget > 0
 		    && this->fire_period[this->year - 1] >= this->args.TreatmentDelay) {
 			ApplyTreatments(this->availCells, this->treatedCells, this->statusCells,
-			                this->burningCells, this->coordCells,
-			                this->unburnableNbrCounts, this->fuelLevels,
-			                wdf[this->weatherPeriod], this->args.TreatmentBudget);
+			                this->burningCells, this->burntCells,
+			                this->fuelLevels, this->elevations,
+			                wdf[this->weatherPeriod],
+			                this->rows, this->cols,
+			                this->args.TreatmentBudget);
 		}
 
 		// Fire Spread (one time step of RL - Operational)
