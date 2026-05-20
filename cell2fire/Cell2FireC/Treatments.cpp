@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <vector>
 
@@ -10,6 +11,11 @@ namespace {
 
 // Total number of fuel types populated by setup_const() in FBPfunc5_NoDebug.c.
 const int NUM_FUELS = 18;
+
+// 8-connected (Moore) neighbourhood offsets. Matches Cell2Fire's spread
+// neighbourhood and wildfireGP's graph connectivity.
+const int DR8[8] = {-1, -1, -1, 0, 0, 1, 1, 1};
+const int DC8[8] = {-1,  0,  1, -1, 1, -1, 0, 1};
 
 double cflFor(const char* fueltype, fuel_coefs* base) {
     fuel_coefs* p = base;
@@ -21,33 +27,34 @@ double cflFor(const char* fueltype, fuel_coefs* base) {
     return 0.0;
 }
 
-// Hardcoded scoring expression:
-//   min(fuel - (wind_align + dist_to_fire), unburnable_nbrs)
-double scoreCell(double fuel, double wind_align, double dist_to_fire,
-                 double unburnable_nbrs) {
-    return std::min(fuel - (wind_align + dist_to_fire), unburnable_nbrs);
+// Min-max scale to [0,1]. If all values are identical, returns 0.0 everywhere.
+void normalizeInPlace(std::vector<double>& v) {
+    if (v.empty()) return;
+    double lo = v[0], hi = v[0];
+    for (double x : v) {
+        if (x < lo) lo = x;
+        if (x > hi) hi = x;
+    }
+    const double range = hi - lo;
+    if (range <= 0.0) {
+        std::fill(v.begin(), v.end(), 0.0);
+        return;
+    }
+    for (double& x : v) {
+        x = (x - lo) / range;
+    }
+}
+
+// Scoring expression. Edit this body to swap strategies; the Features struct
+// in Treatments.h is the single source of truth for what's available.
+double scoreCell(const Features& f) {
+    return f.fuel_level
+         + 3.0 * f.has_treated_neighbour
+         + f.elevation
+         - f.burnable_distance_to_fire;
 }
 
 }  // namespace
-
-void precomputeUnburnableNbrCounts(std::vector<int>& counts,
-                                   const std::vector<int>& statusCells,
-                                   int rows, int cols) {
-    const int n = rows * cols;
-    counts.assign(n, 0);
-    for (int r = 0; r < rows; ++r) {
-        for (int c = 0; c < cols; ++c) {
-            int idx = r * cols + c;
-            int count = 0;
-            // 4-connected: N, S, E, W (matches wildfireGP).
-            if (r > 0 && statusCells[idx - cols] == 4) ++count;
-            if (r < rows - 1 && statusCells[idx + cols] == 4) ++count;
-            if (c > 0 && statusCells[idx - 1] == 4) ++count;
-            if (c < cols - 1 && statusCells[idx + 1] == 4) ++count;
-            counts[idx] = count;
-        }
-    }
-}
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
                           const inputs* df, fuel_coefs* coefs_base,
@@ -56,28 +63,73 @@ void precomputeFuelLevels(std::vector<double>& fuelLevels,
     for (int i = 0; i < nCells; ++i) {
         fuelLevels[i] = cflFor(df[i].fueltype, coefs_base);
     }
+    normalizeInPlace(fuelLevels);
+}
+
+void precomputeElevations(std::vector<double>& elevations,
+                          const inputs* df, int nCells) {
+    elevations.assign(nCells, 0.0);
+    for (int i = 0; i < nCells; ++i) {
+        elevations[i] = static_cast<double>(df[i].elev);
+    }
+    normalizeInPlace(elevations);
 }
 
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,
                     const std::unordered_set<int>& burningCells,
-                    const std::vector<std::vector<int>>& coordCells,
-                    const std::vector<int>& unburnableNbrCounts,
+                    const std::unordered_set<int>& burntCells,
                     const std::vector<double>& fuelLevels,
+                    const std::vector<double>& elevations,
                     const weatherDF& weather,
+                    int rows, int cols,
                     int budget) {
     if (budget <= 0 || availCells.empty() || burningCells.empty()) {
         return 0;
     }
 
-    // Wind vector: waz is the meteorological azimuth (direction wind comes FROM,
-    // 0=N, 90=E). The vector pointing toward the wind source is (sin, cos) in
-    // (east+, north+) coordinates. Scale by wind speed.
+    const int nCells = rows * cols;
+    const double INF = std::numeric_limits<double>::infinity();
+
+    // Wind unit vector pointing toward the meteorological source (where wind
+    // comes FROM). With cell-to-fire dotted into this, positive alignment
+    // means the cell is downwind of the fire.
     const double DEG2RAD = M_PI / 180.0;
     const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
-    const double wind_vec_x = weather.ws * std::sin(waz_rad);
-    const double wind_vec_y = weather.ws * std::cos(waz_rad);
+    const double wind_x = std::sin(waz_rad);  // east component (+ east)
+    const double wind_y = std::cos(waz_rad);  // north component (+ north)
+
+    // Multi-source BFS through Available cells only (status == 0). Walls are
+    // everything else: Burning, Burnt, Harvested, Non-Burnable, Treated.
+    // Sources are the currently burning cells (distance 0). Result is the
+    // burnable hop count from each cell to the nearest fire front; +inf if
+    // unreachable across firebreaks.
+    std::vector<int> burnableDist(nCells, std::numeric_limits<int>::max());
+    {
+        std::deque<int> queue;
+        for (int bId : burningCells) {
+            burnableDist[bId - 1] = 0;
+            queue.push_back(bId - 1);
+        }
+        while (!queue.empty()) {
+            const int cur = queue.front();
+            queue.pop_front();
+            const int curDist = burnableDist[cur];
+            const int r = cur / cols;
+            const int c = cur % cols;
+            for (int k = 0; k < 8; ++k) {
+                const int nr = r + DR8[k];
+                const int nc = c + DC8[k];
+                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                const int nIdx = nr * cols + nc;
+                if (burnableDist[nIdx] != std::numeric_limits<int>::max()) continue;
+                if (statusCells[nIdx] != 0) continue;  // not Available
+                burnableDist[nIdx] = curDist + 1;
+                queue.push_back(nIdx);
+            }
+        }
+    }
 
     struct Candidate {
         int id;
@@ -88,38 +140,80 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
 
     for (int id : availCells) {
         const int idx = id - 1;
-        const double cellX = coordCells[idx][0];
-        const double cellY = coordCells[idx][1];
+        const int row = idx / cols;
+        const int col = idx % cols;
 
-        // Nearest burning cell (Euclidean).
-        double bestDist2 = std::numeric_limits<double>::infinity();
-        double bestDx = 0.0;
-        double bestDy = 0.0;
+        // Chebyshev distance to nearest burning cell + identity of that cell.
+        // 8-connected unrestricted "fire map" — hop count in this grid equals
+        // max(|dr|,|dc|), so no separate BFS is needed.
+        int bestDist = std::numeric_limits<int>::max();
+        int bestFireIdx = -1;
         for (int bId : burningCells) {
-            const int bidx = bId - 1;
-            const double dx = coordCells[bidx][0] - cellX;
-            const double dy = coordCells[bidx][1] - cellY;
-            const double d2 = dx * dx + dy * dy;
-            if (d2 < bestDist2) {
-                bestDist2 = d2;
-                bestDx = dx;
-                bestDy = dy;
+            const int bIdx = bId - 1;
+            const int dr = std::abs(bIdx / cols - row);
+            const int dc = std::abs(bIdx % cols - col);
+            const int d = (dr > dc) ? dr : dc;
+            if (d < bestDist) {
+                bestDist = d;
+                bestFireIdx = bIdx;
             }
         }
 
-        const double dist = std::sqrt(bestDist2);
+        // wind_fire_alignment: cosine of angle between (cell→fire) and the
+        // wind-source direction. No magnitude scaling.
         double wind_align = 0.0;
-        if (dist > 0.0) {
-            const double inv = 1.0 / dist;
-            wind_align = wind_vec_x * bestDx * inv + wind_vec_y * bestDy * inv;
+        if (bestFireIdx >= 0 && bestFireIdx != idx) {
+            const double dx = static_cast<double>(bestFireIdx % cols - col);
+            // Math frame: y points north (toward smaller row indices), so flip
+            // the row delta sign.
+            const double dy = static_cast<double>(row - bestFireIdx / cols);
+            const double mag = std::sqrt(dx * dx + dy * dy);
+            if (mag > 0.0) {
+                wind_align = (wind_x * dx + wind_y * dy) / mag;
+            }
         }
 
-        const double fuel = fuelLevels[idx];
-        const double unbNbrs = static_cast<double>(unburnableNbrCounts[idx]);
-        candidates.push_back({id, scoreCell(fuel, wind_align, dist, unbNbrs)});
+        // 8-neighbour scan for has_treated_neighbour and unburnable count.
+        // unburnable = Burnt / Harvested / Non-Burnable / Treated, mirroring
+        // wildfireGP's dynamic count (it doesn't include actively-burning).
+        double has_treated = 0.0;
+        int unburnable_count = 0;
+        for (int k = 0; k < 8; ++k) {
+            const int nr = row + DR8[k];
+            const int nc = col + DC8[k];
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+            const int nIdx = nr * cols + nc;
+            const int ns = statusCells[nIdx];
+            if (ns == 5) has_treated = 1.0;
+            // statusCells is not updated to 2 when a cell becomes Burnt, so
+            // check burntCells explicitly. Harvested(3), Non-Burnable(4) and
+            // Treated(5) are caught by the status check.
+            const bool unburnable = (ns >= 3) || (burntCells.count(nIdx + 1) > 0);
+            if (unburnable) ++unburnable_count;
+        }
+
+        Features f;
+        f.fuel_level = fuelLevels[idx];
+        f.elevation = elevations[idx];
+        f.distance_to_fire = (bestDist == std::numeric_limits<int>::max())
+                             ? INF : static_cast<double>(bestDist);
+        f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
+                                      ? INF : static_cast<double>(burnableDist[idx]);
+        f.wind_fire_alignment = wind_align;
+        f.has_treated_neighbour = has_treated;
+        f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
+
+        candidates.push_back({id, scoreCell(f)});
     }
 
-    // Partial sort: only need the top `budget`.
+    // intra-step contiguity: the K picks below all see the SAME snapshot of
+    // statusCells — features like has_treated_neighbour reflect prior-step
+    // treatments only, not earlier picks within this call. This matches
+    // wildfireGP's current GP system, which has no mechanism for evolved
+    // strategies to learn intra-step contiguity. If that changes upstream,
+    // replace this block with: loop K times, each iteration scoring all
+    // remaining candidates, picking the max, marking it Treated, and
+    // letting the next iteration see the updated state.
     const int k = std::min<int>(budget, static_cast<int>(candidates.size()));
     std::partial_sort(candidates.begin(), candidates.begin() + k, candidates.end(),
                       [](const Candidate& a, const Candidate& b) {
