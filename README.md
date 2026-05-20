@@ -1,40 +1,42 @@
 # Cell2Fire: A Cell Based Forest Fire Growth Model  C++/Python
-## Cristobal Pais, Jaime Carrasco, David Martell, David L. Woodruff, Andres Weintraub
+
+**This is a fork of [cell2fire/Cell2Fire](https://github.com/cell2fire/Cell2Fire) by James Hughes.**
+The original authors are Cristobal Pais, Jaime Carrasco, David Martell, David L. Woodruff, and Andres Weintraub.
 
 # Disclaimer
 
 This software is for research use only. There is no warranty of any kind;
 there is not even the implied warranty of fitness for use.
 
-![](https://github.com/cell2fire/Cell2Fire/workflows/TestExamples/badge.svg)
-
 # This Fork
 
-This fork extends Cell2Fire with **per-timestep reactive treatment allocation**, providing a
-validation environment for scoring-based wildfire suppression strategies on a physically
-realistic spread model (Canadian FBP fuel system, elliptical spread, real weather inputs).
-The original Cell2Fire only supports static pre-treatment plans (harvest masks computed before
-ignition); this fork adds a reactive treatment pathway so that an arbitrary cell-scoring
-expression can act on the simulation each timestep.
+This fork extends Cell2Fire with **per-timestep reactive treatment allocation**.
+The original only supports static pre-treatment plans (harvest masks computed before ignition);
+this fork adds a reactive treatment pathway so that an arbitrary cell-scoring expression can
+act on the simulation each timestep.
 
 ## What the fork adds
 
 1. **A `Treated` cell state.** Cells move into a new firebreak state mid-simulation. Treated
-   cells never ignite — incoming fire messages are dropped both in the receiver path
-   (`Cell2Fire::GetMessages`) and defensively in `CellsFBP::get_burned`. Treated is distinct
-   from `Harvested` so initial harvest plans and reactive treatments remain separable in
-   output grids (Treated → `-2`, Harvested → `-1`).
-2. **A per-timestep treatment hook** in the C++ simulation loop that scores all unburned
-   burnable cells and converts the top K to `Treated` before each spread step, with a
-   configurable intervention delay and budget.
-3. **Feature extraction** for the four cell-level primitives: fuel level (Crown Fuel Load from
-   the FBP fuel coefficients), Euclidean distance to the nearest burning cell, wind–fire
-   alignment (wind vector dotted with the unit vector from the cell toward the nearest burning
-   cell), and 4-connected unburnable neighbour count. The unburnable counts and fuel levels
-   are precomputed once at construction.
-4. **A pluggable C++ scoring function** in `cell2fire/Cell2FireC/Treatments.cpp`. The current
-   hardcoded expression is:
-   `min(fuel_level - (wind_fire_alignment + distance_to_fire), unburnable_neighbour_count)`.
+   cells never ignite — incoming fire messages are dropped in `Cell2Fire::GetMessages` and
+   defensively in `CellsFBP::get_burned`. Treated is distinct from `Harvested` so initial
+   harvest plans and reactive treatments remain separable in output grids
+   (Treated → `-2`, Harvested → `-1`).
+2. **A per-timestep treatment hook** in the C++ simulation loop that scores all available
+   cells and converts the top K to `Treated` before each spread step, with a configurable
+   intervention delay and budget.
+3. **Feature extraction** precomputed or recomputed each step as needed:
+   - `fuel_level` — Crown Fuel Load from FBP fuel coefficients, normalized [0,1]
+   - `elevation` — cell elevation, normalized [0,1]
+   - `distance_to_fire` — Chebyshev hops to nearest burning cell (8-connected, unrestricted)
+   - `burnable_distance_to_fire` — BFS hops through Available cells only; +inf if cut off by firebreaks
+   - `wind_fire_alignment` — cosine of angle between cell→fire and wind-source direction
+   - `has_treated_neighbour` — 1.0 if any 8-connected neighbour is Treated
+   - `unburnable_neighbour_count` — 8-connected count of Burnt/Harvested/Non-Burnable/Treated neighbours
+4. **A pluggable C++ scoring function** in `cell2fire/Cell2FireC/Treatments.cpp`. Edit
+   `scoreCell()` to swap expressions; the `Features` struct is the only thing that changes
+   at call sites. The current expression is:
+   `fuel_level + 3 * has_treated_neighbour + elevation - burnable_distance_to_fire`.
 
 ## Treatment CLI flags
 
@@ -60,7 +62,7 @@ Example (dogrib with a budget of 20 starting at fire period 1):
 | Dockerfile (libgl1, libglib2.0-0, bind-mount workflow) | done |
 | `Treated` cell state + receiver-side firebreak guard | done |
 | Per-timestep `ApplyTreatments()` hook | done |
-| Feature extraction (fuel, dist-to-fire, wind alignment, unburnable neighbours) | done |
+| Feature extraction (fuel, elevation, dist-to-fire, burnable-dist-to-fire, wind alignment, treated/unburnable neighbours) | done |
 | CLI args for treatment budget `K` and intervention delay `N` | done |
 
 See `CLAUDE.md` for the full implementation spec.
