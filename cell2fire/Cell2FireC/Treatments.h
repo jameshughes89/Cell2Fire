@@ -18,6 +18,7 @@ struct Features {
     double wind_fire_alignment;         // cosine in [-1,1], no wind-speed scaling
     double has_treated_neighbour;       // 1.0 if any 8-neighbour is Treated, else 0.0
     double unburnable_neighbour_count;  // 8-conn count of Burnt/Harvested/Non-Burnable/Treated
+    double mean_neighbour_fuel;         // mean fuelLevel of Available 8-neighbours
 };
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -27,7 +28,7 @@ void precomputeFuelLevels(std::vector<double>& fuelLevels,
 void precomputeElevations(std::vector<double>& elevations,
                           const inputs* df, int nCells);
 
-// Strategies: "scored", "proximity", "random", "none"
+// Strategies: "fuel_elevation", "neighbour_fuel", "proximity", "random", "none"
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,

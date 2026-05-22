@@ -309,13 +309,13 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 	}
 	else args_ptr->TreatmentDelay = 0;
 
-	//--TreatmentStrategy  (string: scored | proximity | random | none)
+	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | random | none)
 	char * tstrategy = getCmdOption(argv, argv + argc, "--TreatmentStrategy");
 	if (tstrategy){
 		printf("TreatmentStrategy: %s \n", tstrategy);
 		args_ptr->TreatmentStrategy = tstrategy;
 	}
-	else args_ptr->TreatmentStrategy = "scored";
+	else args_ptr->TreatmentStrategy = "fuel_elevation";
 	
 	// Populate structure
 	// Strings 

@@ -260,8 +260,8 @@ class Statistics(object):
 
     # Burnt Probability Heatmap
     #   cbarF seems to indicate no legend when true.
-    def BPHeatmap(self, WeightedScar, Path=None, nscen=10, sq=False, namePlot="BP_HeatMap", 
-                  Title=None, cbarF=True, ticks=100, transparent=False):
+    def BPHeatmap(self, WeightedScar, Path=None, nscen=10, sq=False, namePlot="BP_HeatMap",
+                  Title=None, cbarF=True, ticks=100, transparent=False, treated_mask=None):
         # Figure size
         plt.figure(figsize = (15, 9)) 
 
@@ -312,18 +312,26 @@ class Statistics(object):
             if not os.path.exists(Path):
                 os.makedirs(Path)
 
+        if treated_mask is not None and treated_mask.any():
+            from matplotlib.patches import Rectangle
+            rows_idx, cols_idx = np.where(treated_mask)
+            for r, c in zip(rows_idx, cols_idx):
+                ax.add_patch(Rectangle((c, r), 1, 1,
+                                       facecolor=(0.61, 0.35, 0.71),
+                                       edgecolor='none', zorder=5))
+
         for _, spine in ax.spines.items():
             spine.set_visible(True)
 
-        plt.savefig(os.path.join(Path, namePlot + ".png"), dpi=200, bbox_inches='tight', 
+        plt.savefig(os.path.join(Path, namePlot + ".png"), dpi=200, bbox_inches='tight',
                     pad_inches=0, transparent=transparent)
         if self._pdfOutputs:
-            plt.savefig(os.path.join(Path, namePlot + ".pdf"), dpi=200, bbox_inches='tight', 
+            plt.savefig(os.path.join(Path, namePlot + ".pdf"), dpi=200, bbox_inches='tight',
                     pad_inches=0, transparent=transparent)
-        
-        
+
+
         plt.close("all")
-    
+
     # ROS Heatmap
     def ROSHeatmap(self, ROSM, Path=None, nscen=1, sq=True, namePlot="ROS_HeatMap",
                    Title=None, cbarF=True, ticks="auto", transparent=False, 
@@ -872,18 +880,19 @@ class Statistics(object):
                         a = np.zeros([self._Rows,self._Cols]).astype(np.int64)
                         
                 # Set harvested to null prob
+                treated_mask = (a == -2)
                 a[a == 2] = 0
-                #print("a:", a)
+                a[treated_mask] = 0
 
                 # Generate BPHeatmap
                 PlotPath = os.path.join(self._OutFolder, "Plots/Plots" + str(i + 1))
                 if os.path.isdir(PlotPath) is False:
                     os.makedirs(PlotPath)
-                
+
                 num = str(j+1).zfill(2)
-                self.BPHeatmap(a, Path=PlotPath, nscen=1, sq=True, namePlot="Fire" + num, 
+                self.BPHeatmap(a, Path=PlotPath, nscen=1, sq=True, namePlot="Fire" + num,
                                Title="Burned Cells Fire Period " + str(j + 1), cbarF=True, ticks=False,
-                               transparent=True)
+                               transparent=True, treated_mask=treated_mask)
             
     
     # Plot full forest (all cells and colors)

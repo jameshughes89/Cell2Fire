@@ -335,10 +335,10 @@ def make_parser():
                         type=int,
                         default=0)
     parser.add_argument("--TreatmentStrategy",
-                        help="Treatment selection strategy: scored | proximity | random | none",
+                        help="Treatment selection strategy: fuel_elevation | neighbour_fuel | proximity | random | none",
                         dest="TreatmentStrategy",
                         type=str,
-                        default="scored")
+                        default="fuel_elevation")
     return parser
 
 

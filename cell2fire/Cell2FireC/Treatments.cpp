@@ -45,11 +45,17 @@ void normalizeInPlace(std::vector<double>& v) {
     }
 }
 
-double scoreScored(const Features& f) {
+double scoreFuelElevation(const Features& f) {
     return f.fuel_level
          + 3.0 * f.has_treated_neighbour
          + f.elevation
          - f.burnable_distance_to_fire;
+}
+
+double scoreNeighbourFuel(const Features& f) {
+    return -f.burnable_distance_to_fire
+           + f.mean_neighbour_fuel
+           + f.has_treated_neighbour;
 }
 
 const double ANCHOR_WEIGHT = 0.1;
@@ -172,6 +178,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
 
         double has_treated = 0.0;
         int unburnable_count = 0;
+        double neighbour_fuel_sum = 0.0;
+        int neighbour_fuel_count = 0;
         for (int k = 0; k < 8; ++k) {
             const int nr = row + DR8[k];
             const int nc = col + DC8[k];
@@ -182,6 +190,10 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             // statusCells isn't updated to 2 for burnt cells; check burntCells directly
             const bool unburnable = (ns >= 3) || (burntCells.count(nIdx + 1) > 0);
             if (unburnable) ++unburnable_count;
+            if (ns == 0) {
+                neighbour_fuel_sum += fuelLevels[nIdx];
+                ++neighbour_fuel_count;
+            }
         }
 
         Features f;
@@ -191,11 +203,16 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                              ? INF : static_cast<double>(bestDist);
         f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
                                       ? INF : static_cast<double>(burnableDist[idx]);
-        f.wind_fire_alignment       = wind_align;
-        f.has_treated_neighbour     = has_treated;
+        f.wind_fire_alignment        = wind_align;
+        f.has_treated_neighbour      = has_treated;
         f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
+        f.mean_neighbour_fuel        = (neighbour_fuel_count > 0)
+                                       ? neighbour_fuel_sum / neighbour_fuel_count : 0.0;
 
-        const double s = (strategy == "proximity") ? scoreProximity(f) : scoreScored(f);
+        double s;
+        if (strategy == "proximity")       s = scoreProximity(f);
+        else if (strategy == "neighbour_fuel") s = scoreNeighbourFuel(f);
+        else                               s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
 
