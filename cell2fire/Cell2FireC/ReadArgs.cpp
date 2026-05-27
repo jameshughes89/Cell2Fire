@@ -309,7 +309,7 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 	}
 	else args_ptr->TreatmentDelay = 0;
 
-	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | random | none)
+	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | random | none)
 	char * tstrategy = getCmdOption(argv, argv + argc, "--TreatmentStrategy");
 	if (tstrategy){
 		printf("TreatmentStrategy: %s \n", tstrategy);

@@ -64,6 +64,22 @@ double scoreProximity(const Features& f) {
     return -f.burnable_distance_to_fire + ANCHOR_WEIGHT * f.has_treated_neighbour;
 }
 
+double scoreShieldedRatio(const Features& f) {
+    const double num = f.mean_neighbour_fuel
+                     - f.burnable_distance_to_fire
+                     - f.burning_neighbour_count / 18.0
+                     + f.has_treated_neighbour;
+    const double den = f.burnable_distance_to_fire + 2.0 * f.mean_neighbour_fuel;
+    return num / den;
+}
+
+
+double scoreOpenAnchor(const Features& f) {
+    const double denom = std::max(0.8, f.unburned_neighbour_count);
+    return f.treated_neighbour_count
+         + (f.mean_neighbour_fuel - 16.0) / denom * f.burnable_distance_to_fire;
+}
+
 }  // namespace
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -176,7 +192,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             if (mag > 0.0) wind_align = (wind_x * dx + wind_y * dy) / mag;
         }
 
-        double has_treated = 0.0;
+        int treated_count = 0;
+        int burning_count = 0;
         int unburnable_count = 0;
         double neighbour_fuel_sum = 0.0;
         int neighbour_fuel_count = 0;
@@ -186,7 +203,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
             const int nIdx = nr * cols + nc;
             const int ns = statusCells[nIdx];
-            if (ns == 5) has_treated = 1.0;
+            if (ns == 5) ++treated_count;
+            if (ns == 1) ++burning_count;
             // statusCells isn't updated to 2 for burnt cells; check burntCells directly
             const bool unburnable = (ns >= 3) || (burntCells.count(nIdx + 1) > 0);
             if (unburnable) ++unburnable_count;
@@ -204,15 +222,20 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
                                       ? INF : static_cast<double>(burnableDist[idx]);
         f.wind_fire_alignment        = wind_align;
-        f.has_treated_neighbour      = has_treated;
+        f.has_treated_neighbour      = (treated_count > 0) ? 1.0 : 0.0;
         f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
         f.mean_neighbour_fuel        = (neighbour_fuel_count > 0)
                                        ? neighbour_fuel_sum / neighbour_fuel_count : 0.0;
+        f.burning_neighbour_count    = static_cast<double>(burning_count);
+        f.treated_neighbour_count    = static_cast<double>(treated_count);
+        f.unburned_neighbour_count   = static_cast<double>(neighbour_fuel_count);
 
         double s;
-        if (strategy == "proximity")       s = scoreProximity(f);
+        if (strategy == "proximity")           s = scoreProximity(f);
         else if (strategy == "neighbour_fuel") s = scoreNeighbourFuel(f);
-        else                               s = scoreFuelElevation(f);
+        else if (strategy == "shielded_ratio") s = scoreShieldedRatio(f);
+        else if (strategy == "open_anchor")    s = scoreOpenAnchor(f);
+        else                                   s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
 

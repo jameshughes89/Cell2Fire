@@ -46,6 +46,9 @@ CLI flags: `--TreatmentBudget K`, `--TreatmentDelay N`, `--TreatmentStrategy <na
 | `has_treated_neighbour` | 1.0 if any 8-neighbour is Treated, else 0.0 |
 | `unburnable_neighbour_count` | 8-connected count of Burnt/Harvested/Non-Burnable/Treated neighbours |
 | `mean_neighbour_fuel` | Mean `fuel_level` of Available 8-neighbours |
+| `burning_neighbour_count` | 8-connected count of Burning neighbours |
+| `treated_neighbour_count` | 8-connected count of Treated neighbours |
+| `unburned_neighbour_count` | 8-connected count of Available neighbours |
 
 `waz` is meteorological (direction wind comes FROM). The wind vector computation in
 `Treatments.cpp` is correct for this convention.
@@ -59,6 +62,8 @@ CLI flags: `--TreatmentBudget K`, `--TreatmentDelay N`, `--TreatmentStrategy <na
 | `proximity` | `-burnable_distance_to_fire + 0.1 * has_treated_neighbour` |
 | `fuel_elevation` | `fuel_level + 3*has_treated_neighbour + elevation - burnable_distance_to_fire` |
 | `neighbour_fuel` | `-burnable_distance_to_fire + mean_neighbour_fuel + has_treated_neighbour` |
+| `shielded_ratio` | `(mean_neighbour_fuel - burnable_distance_to_fire - burning_neighbour_count/18 + has_treated_neighbour) / (burnable_distance_to_fire + 2*mean_neighbour_fuel)` |
+| `open_anchor` | `treated_neighbour_count + (mean_neighbour_fuel - 16) / max(0.8, unburned_neighbour_count) * burnable_distance_to_fire` |
 
 Default strategy is `fuel_elevation`. To add a new strategy: add a scoring function to
 `Treatments.cpp`, add an `else if` branch in the `computeScore` lambda dispatch, and update
