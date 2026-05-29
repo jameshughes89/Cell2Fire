@@ -28,3 +28,8 @@ results/
 Results/
 Harvest40x40/
 simOuts/
+
+# Generated GIFs and temporary simulation scratch directories
+gifs/
+tmp/
+.gif_tmp/
