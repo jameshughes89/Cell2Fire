@@ -67,7 +67,7 @@ CLI flags: `--TreatmentBudget K`, `--TreatmentDelay N`, `--TreatmentStrategy <na
 
 Default strategy is `fuel_elevation`. To add a new strategy: add a scoring function to
 `Treatments.cpp`, add an `else if` branch in the `computeScore` lambda dispatch, and update
-the comment in `ReadArgs.cpp` and the help string in `ParseInputs.py`. Rebuild Docker.
+the comment in `ReadArgs.cpp` and the help string in `ParseInputs.py`. Recompile C++ (see Workflow).
 
 ### Visualisation
 
@@ -109,6 +109,6 @@ Calibration parameters: `--IgnitionRad 2 --TreatmentBudget 3 --TreatmentDelay 3
 
 1. Train GP in wildfireGP, select best expression
 2. Add scoring function to `Treatments.cpp`, wire up dispatch and CLI
-3. Rebuild Docker: `docker build -t cell2fire .`
+3. Recompile C++: `docker run --rm -v $(pwd):/cell2fire cell2fire sh -c "cd /cell2fire/cell2fire/Cell2FireC && make -f Makefile"`
 4. Run comparison: `--TreatmentStrategy <name>` on each calibrated landscape
 5. Report burn reduction vs `none` and vs `proximity` baseline
