@@ -24,8 +24,8 @@ act on the simulation each timestep.
    (Treated → `-2`, Harvested → `-1`).
 2. **A per-timestep treatment hook** in the C++ simulation loop that scores all available
    cells and converts the top K to `Treated` before each spread step, with a configurable
-   intervention delay and budget.
-3. **Feature extraction** precomputed or recomputed each step as needed:
+   intervention delay, budget, and minimum distance from the fire front.
+3. **11 features** computed per candidate cell each timestep:
    - `fuel_level` — Crown Fuel Load from FBP fuel coefficients, normalized [0,1]
    - `elevation` — cell elevation, normalized [0,1]
    - `distance_to_fire` — Chebyshev hops to nearest burning cell (8-connected, unrestricted)
@@ -33,25 +33,52 @@ act on the simulation each timestep.
    - `wind_fire_alignment` — cosine of angle between cell→fire and wind-source direction
    - `has_treated_neighbour` — 1.0 if any 8-connected neighbour is Treated
    - `unburnable_neighbour_count` — 8-connected count of Burnt/Harvested/Non-Burnable/Treated neighbours
-4. **A pluggable C++ scoring function** in `cell2fire/Cell2FireC/Treatments.cpp`. Edit
-   `scoreCell()` to swap expressions; the `Features` struct is the only thing that changes
-   at call sites. The current expression is:
-   `fuel_level + 3 * has_treated_neighbour + elevation - burnable_distance_to_fire`.
+   - `mean_neighbour_fuel` — mean `fuel_level` of Available 8-neighbours
+   - `burning_neighbour_count` — 8-connected count of Burning neighbours
+   - `treated_neighbour_count` — 8-connected count of Treated neighbours
+   - `unburned_neighbour_count` — 8-connected count of Available neighbours
+4. **Seven named strategies** in `cell2fire/Cell2FireC/Treatments.cpp`, selectable at runtime:
+
+   | `--TreatmentStrategy` | Scoring expression |
+   |---|---|
+   | `none` | No treatments applied |
+   | `random` | Uniform random selection |
+   | `proximity` | `-burnable_distance_to_fire + 0.1 * has_treated_neighbour` |
+   | `fuel_elevation` | `fuel_level + 3*has_treated_neighbour + elevation - burnable_distance_to_fire` |
+   | `neighbour_fuel` | `-burnable_distance_to_fire + mean_neighbour_fuel + has_treated_neighbour` |
+   | `shielded_ratio` | `(mean_neighbour_fuel - burnable_distance_to_fire - burning_neighbour_count/18 + has_treated_neighbour) / (burnable_distance_to_fire + 2*mean_neighbour_fuel)` |
+   | `open_anchor` | `treated_neighbour_count + (mean_neighbour_fuel - 16) / max(0.8, unburned_neighbour_count) * burnable_distance_to_fire` |
+   | `fuel_flank` | `mean_neighbour_fuel / max(1, burning_neighbour_count) + has_treated_neighbour - distance_to_fire` |
+
+   To add a new strategy: add a scoring function to `Treatments.cpp`, add an `else if` branch
+   in the `computeScore` dispatch, update the comment in `ReadArgs.cpp` and help string in
+   `ParseInputs.py`, and recompile.
+5. **Intra-step contiguity.** After each of the K placements, the 8 neighbours of the
+   just-treated cell are rescored before the next pick, so contiguous barrier segments
+   emerge naturally within a single timestep.
+6. **Purple Treated rendering** in per-timestep GIF animations. Treated cells appear as
+   purple patches overlaid on the forest background.
 
 ## Treatment CLI flags
 
 | Flag | Type | Default | Meaning |
 |---|---|---|---|
-| `--TreatmentBudget` | int | `0` | Cells treated per fire period. `0` disables the hook entirely (fork is fully backward-compatible). |
-| `--TreatmentDelay`  | int | `0` | Number of fire periods to skip before the first treatment is applied. |
+| `--TreatmentBudget` | int | `0` | Cells treated per fire period. `0` disables treatments entirely (fully backward-compatible). |
+| `--TreatmentDelay` | int | `0` | Fire periods to skip before the first treatment is applied. |
+| `--TreatmentStrategy` | str | `fuel_elevation` | Scoring strategy (see table above). |
+| `--TreatmentMinDist` | int | `0` | Minimum BFS hops from the fire front; candidates closer than this are excluded. |
 
-Example (dogrib with a budget of 20 starting at fire period 1):
+Example (dogrib, proximity strategy, calibrated parameters):
 ```
-./Cell2Fire --input-instance-folder ../data/dogrib/ --output-folder ../results/dogrib_treated \
-  --ignitions --sim-years 1 --nsims 1 --grids --final-grid --Fire-Period-Length 1.0 \
-  --weather rows --nweathers 1 --output-messages --ROS-CV 0.0 --seed 123 --IgnitionRad 0 \
-  --HFactor 1.0 --FFactor 1.0 --BFactor 1.0 --EFactor 1.0 \
-  --TreatmentBudget 20 --TreatmentDelay 1
+python main.py \
+  --input-instance-folder ../data/dogrib/ \
+  --output-folder ../results/dogrib_proximity \
+  --ignitions --sim-years 1 --nsims 1 \
+  --weather rows --nweathers 1 \
+  --Fire-Period-Length 30.0 --max-fire-periods 200 \
+  --IgnitionRad 2 --ROS-CV 0.0 --seed 123 \
+  --TreatmentBudget 3 --TreatmentDelay 3 --TreatmentStrategy proximity \
+  --grids --allPlots --combine --stats
 ```
 
 ## Status
@@ -62,16 +89,18 @@ Example (dogrib with a budget of 20 starting at fire period 1):
 | Dockerfile (libgl1, libglib2.0-0, bind-mount workflow) | done |
 | `Treated` cell state + receiver-side firebreak guard | done |
 | Per-timestep `ApplyTreatments()` hook | done |
-| Feature extraction (fuel, elevation, dist-to-fire, burnable-dist-to-fire, wind alignment, treated/unburnable neighbours) | done |
-| CLI args for treatment budget `K` and intervention delay `N` | done |
+| 11-feature extraction per candidate cell | done |
+| 8 strategies (none, random, proximity, fuel_elevation, neighbour_fuel, shielded_ratio, open_anchor, fuel_flank) | done |
+| Intra-step rescore of treated-cell neighbours | done |
+| CLI flags: TreatmentBudget, TreatmentDelay, TreatmentStrategy, TreatmentMinDist | done |
+| Purple Treated rendering in GIF animations | done |
+| Calibrated test landscapes (dogrib, Arrowhead, MicaCreek, Revelstoke) | done |
 
 See `CLAUDE.md` for the full implementation spec.
 
 # Introduction
 
-A more actively maintained fork of this repository is [C2FK](https://github.com/fire2a/C2FK).
-
-Cell2Fire is a new cell-based forest and wildland landscape fire spread simulator.
+Cell2Fire is a cell-based forest and wildland landscape fire spread simulator.
 The fire environment is characterized by partitioning the landscape into a large number of homogeneous cells and specifying the fuel, weather, fuel moisture and topography attributes of each cell.
 Fire spread within each cell is assumed to be elliptical and governed by spread rates predicted by any independent fire spread model (e.g. the Canadian Forest Fire Behavior Prediction System).
 Cell2Fire exploits parallel computation methods which allows users to run large-scale simulations in short periods of time.
@@ -145,15 +174,13 @@ $ python main.py -h
 ```
 
 In addition, both the C++ core and Python scripts can be used separately:
-## C ++
+## C++
 Only simulation and generate evolution grids (no stats or plots).
-Parallel-ready version will be uploaded soon.
 ```
 $ ./Cell2Fire --input-instance-folder ../data/Sub40x40/ --output-folder ../results/Sub40x40 --ignitions --sim-years 1 --nsims 1 --grids --final-grid --Fire-Period-Length 1.0 --weather rows --nweathers 1 --output-messages --ROS-CV 0.0 --seed 123 --IgnitionRad 0 --HFactor 1.0 --FFactor 1.0 --BFactor 1.0 --EFactor 1.0
 ```
 
-
-## Python 
+## Python
 Only processing option (reads a previously simulated instance and computes stats/plots).
 Important: provide the number of sims --nsims to be processed
 ```
