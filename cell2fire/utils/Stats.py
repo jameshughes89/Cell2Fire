@@ -881,7 +881,6 @@ class Statistics(object):
                         
                 # Set harvested to null prob
                 treated_mask = (a == -2)
-                a[a == 2] = 0
                 a[treated_mask] = 0
 
                 # Generate BPHeatmap
@@ -891,7 +890,7 @@ class Statistics(object):
 
                 num = str(j+1).zfill(2)
                 self.BPHeatmap(a, Path=PlotPath, nscen=1, sq=True, namePlot="Fire" + num,
-                               Title="Burned Cells Fire Period " + str(j + 1), cbarF=True, ticks=False,
+                               Title="Burned Cells Weather Period " + str(j + 1), cbarF=True, ticks=False,
                                transparent=True, treated_mask=treated_mask)
             
     
