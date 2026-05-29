@@ -80,6 +80,13 @@ double scoreOpenAnchor(const Features& f) {
          + (f.mean_neighbour_fuel - 16.0) / denom * f.burnable_distance_to_fire;
 }
 
+double scoreFuelFlank(const Features& f) {
+    const double fuel_term = (f.burning_neighbour_count > 0.0)
+                             ? f.mean_neighbour_fuel / f.burning_neighbour_count
+                             : 1.0;
+    return fuel_term + f.has_treated_neighbour - f.distance_to_fire;
+}
+
 }  // namespace
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -112,33 +119,16 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     int rows, int cols,
                     int budget,
                     const std::string& strategy,
-                    std::default_random_engine& generator) {
+                    std::default_random_engine& generator,
+                    int minDist) {
     if (strategy == "none") return 0;
     if (budget <= 0 || availCells.empty() || burningCells.empty()) return 0;
-
-    if (strategy == "random") {
-        std::vector<int> ids(availCells.begin(), availCells.end());
-        std::shuffle(ids.begin(), ids.end(), generator);
-        const int k = std::min<int>(budget, static_cast<int>(ids.size()));
-        for (int i = 0; i < k; ++i) {
-            statusCells[ids[i] - 1] = 5;
-            availCells.erase(ids[i]);
-            treatedCells.insert(ids[i]);
-        }
-        return k;
-    }
 
     const int nCells = rows * cols;
     const double INF = std::numeric_limits<double>::infinity();
 
-    // waz is meteorological: direction wind comes FROM. Positive alignment
-    // means the candidate cell is downwind of the fire.
-    const double DEG2RAD = M_PI / 180.0;
-    const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
-    const double wind_x = std::sin(waz_rad);
-    const double wind_y = std::cos(waz_rad);
-
     // Multi-source BFS from burning cells through Available-only cells.
+    // Used both for minDist filtering and for burnable_distance_to_fire feature.
     std::vector<int> burnableDist(nCells, std::numeric_limits<int>::max());
     {
         std::deque<int> queue;
@@ -164,6 +154,29 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             }
         }
     }
+
+    if (strategy == "random") {
+        std::vector<int> ids;
+        ids.reserve(availCells.size());
+        for (int id : availCells) {
+            if (burnableDist[id - 1] >= minDist) ids.push_back(id);
+        }
+        std::shuffle(ids.begin(), ids.end(), generator);
+        const int k = std::min<int>(budget, static_cast<int>(ids.size()));
+        for (int i = 0; i < k; ++i) {
+            statusCells[ids[i] - 1] = 5;
+            availCells.erase(ids[i]);
+            treatedCells.insert(ids[i]);
+        }
+        return k;
+    }
+
+    // waz is meteorological: direction wind comes FROM. Positive alignment
+    // means the candidate cell is downwind of the fire.
+    const double DEG2RAD = M_PI / 180.0;
+    const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
+    const double wind_x = std::sin(waz_rad);
+    const double wind_y = std::cos(waz_rad);
 
     // Per-cell feature + score computation. Called for initial scoring and for
     // rescoring the 8 neighbours of a just-treated cell (the only cells whose
@@ -235,13 +248,19 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         else if (strategy == "neighbour_fuel") s = scoreNeighbourFuel(f);
         else if (strategy == "shielded_ratio") s = scoreShieldedRatio(f);
         else if (strategy == "open_anchor")    s = scoreOpenAnchor(f);
+        else if (strategy == "fuel_flank")     s = scoreFuelFlank(f);
         else                                   s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
 
     // Shuffle first so equal-scoring candidates are broken randomly; stable_sort
     // preserves that order through re-sorts after each placement.
-    std::vector<int> ids(availCells.begin(), availCells.end());
+    // Honour minDist: exclude cells within minDist BFS hops of the fire front.
+    std::vector<int> ids;
+    ids.reserve(availCells.size());
+    for (int id : availCells) {
+        if (burnableDist[id - 1] >= minDist) ids.push_back(id);
+    }
     std::shuffle(ids.begin(), ids.end(), generator);
 
     std::unordered_map<int, double> scores;

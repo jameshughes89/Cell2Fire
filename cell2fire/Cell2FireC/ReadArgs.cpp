@@ -309,14 +309,22 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 	}
 	else args_ptr->TreatmentDelay = 0;
 
-	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | random | none)
+	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | random | none)
 	char * tstrategy = getCmdOption(argv, argv + argc, "--TreatmentStrategy");
 	if (tstrategy){
 		printf("TreatmentStrategy: %s \n", tstrategy);
 		args_ptr->TreatmentStrategy = tstrategy;
 	}
 	else args_ptr->TreatmentStrategy = "fuel_elevation";
-	
+
+	//--TreatmentMinDist  (int, min BFS hops from fire for a cell to be treatable; 0 disables)
+	char * tmindist = getCmdOption(argv, argv + argc, "--TreatmentMinDist");
+	if (tmindist){
+		printf("TreatmentMinDist: %s \n", tmindist);
+		args_ptr->TreatmentMinDist = std::stoi(tmindist, &sz);
+	}
+	else args_ptr->TreatmentMinDist = 0;
+
 	// Populate structure
 	// Strings 
 	if (input_folder == &empty){
@@ -387,4 +395,5 @@ void printArgs(arguments args){
 	std::cout << "TreatmentBudget: " << args.TreatmentBudget << std::endl;
 	std::cout << "TreatmentDelay: " << args.TreatmentDelay << std::endl;
 	std::cout << "TreatmentStrategy: " << args.TreatmentStrategy << std::endl;
+	std::cout << "TreatmentMinDist: " << args.TreatmentMinDist << std::endl;
 }

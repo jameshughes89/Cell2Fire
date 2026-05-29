@@ -77,6 +77,7 @@ class Cell2FireC:
                    '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
                    '--TreatmentStrategy', self.args.TreatmentStrategy,
+                   '--TreatmentMinDist', str(int(self.args.TreatmentMinDist)),
 				   '--verbose' if (self.args.verbose) else '',]
         
         # Output log
@@ -124,6 +125,7 @@ class Cell2FireC:
                    '--TreatmentBudget', str(int(self.args.TreatmentBudget)),
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
                    '--TreatmentStrategy', self.args.TreatmentStrategy,
+                   '--TreatmentMinDist', str(int(self.args.TreatmentMinDist)),
 				   '--verbose' if (self.args.verbose) else '']
         
         # Output log

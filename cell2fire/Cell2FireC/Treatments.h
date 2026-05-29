@@ -19,6 +19,9 @@ struct Features {
     double has_treated_neighbour;       // 1.0 if any 8-neighbour is Treated, else 0.0
     double unburnable_neighbour_count;  // 8-conn count of Burnt/Harvested/Non-Burnable/Treated
     double mean_neighbour_fuel;         // mean fuelLevel of Available 8-neighbours
+    double burning_neighbour_count;     // 8-conn count of Burning neighbours
+    double treated_neighbour_count;     // 8-conn count of Treated neighbours
+    double unburned_neighbour_count;    // 8-conn count of Available neighbours
 };
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -28,7 +31,8 @@ void precomputeFuelLevels(std::vector<double>& fuelLevels,
 void precomputeElevations(std::vector<double>& elevations,
                           const inputs* df, int nCells);
 
-// Strategies: "fuel_elevation", "neighbour_fuel", "proximity", "random", "none"
+// Strategies: "fuel_elevation", "neighbour_fuel", "proximity",
+//             "shielded_ratio", "open_anchor", "random", "none"
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,
@@ -40,6 +44,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     int rows, int cols,
                     int budget,
                     const std::string& strategy,
-                    std::default_random_engine& generator);
+                    std::default_random_engine& generator,
+                    int minDist = 0);
 
 #endif

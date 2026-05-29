@@ -1177,11 +1177,11 @@ void Cell2Fire::outputGrid(){
 	std::vector<int> statusCells2(this->nCells, 0); //(long int, int);
 	
 	// Update status
-	for (auto & bc : this->burningCells){
-			statusCells2[bc-1] = 1;
-	}
 	for (auto & ac : this->burntCells){
 			statusCells2[ac-1] = 1;
+	}
+	for (auto & bc : this->burningCells){
+			statusCells2[bc-1] = 1;
 	}
 	for (auto & hc : this->harvestCells){
 			statusCells2[hc-1] = -1;
@@ -1279,7 +1279,8 @@ void Cell2Fire::Step(std::default_random_engine generator){
 			                this->rows, this->cols,
 			                this->args.TreatmentBudget,
 			                this->args.TreatmentStrategy,
-			                generator);
+			                generator,
+			                this->args.TreatmentMinDist);
 		}
 
 		// Fire Spread (one time step of RL - Operational)

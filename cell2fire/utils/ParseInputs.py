@@ -335,10 +335,16 @@ def make_parser():
                         type=int,
                         default=0)
     parser.add_argument("--TreatmentStrategy",
-                        help="Treatment selection strategy: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | random | none",
+                        help="Treatment selection strategy: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | random | none",
                         dest="TreatmentStrategy",
                         type=str,
                         default="fuel_elevation")
+    parser.add_argument("--TreatmentMinDist",
+                        help="Minimum BFS hops from the fire front for a cell to be eligible for treatment. "
+                             "0 = no constraint (e.g. aerial); 2 = ground crew standoff.",
+                        dest="TreatmentMinDist",
+                        type=int,
+                        default=0)
     return parser
 
 
