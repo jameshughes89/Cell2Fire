@@ -30,7 +30,8 @@ from pathlib import Path
 REPO_ROOT  = Path(__file__).resolve().parent.parent
 BINARY     = REPO_ROOT / "cell2fire" / "Cell2FireC" / "Cell2Fire"
 DATA_ROOT  = REPO_ROOT / "data"
-OUT_CSV    = REPO_ROOT / "results" / "matrix_results.csv"
+OUT_CSV    = Path(os.environ.get("MATRIX_OUT",
+               str(REPO_ROOT / "results" / "matrix_results.csv")))
 
 LANDSCAPES = {
     "dogrib":     {"ignition": 39795, "rows": 357, "cols": 223},
