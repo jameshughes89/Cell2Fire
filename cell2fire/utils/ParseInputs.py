@@ -335,7 +335,7 @@ def make_parser():
                         type=int,
                         default=0)
     parser.add_argument("--TreatmentStrategy",
-                        help="Treatment selection strategy: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | random | none",
+                        help="Treatment selection strategy: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | cell1_baseline | cell2_ground | cell3_lowonly | cell4_highonly | cell5_hilly | cell6_barriers | random | none",
                         dest="TreatmentStrategy",
                         type=str,
                         default="fuel_elevation")

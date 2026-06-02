@@ -416,6 +416,7 @@ Cell2Fire::Cell2Fire(arguments _args) : CSVWeather(_args.InFolder + "Weather.csv
 	// levels depend only on the per-cell fuel type — both invariant across sims.
 	precomputeFuelLevels(this->fuelLevels, df, this->coef_ptr, this->nCells);
 	precomputeElevations(this->elevations, df, this->nCells);
+	precomputeSlopes(this->slopes, df, this->nCells);
 }
 
 
@@ -1274,7 +1275,7 @@ void Cell2Fire::Step(std::default_random_engine generator){
 		    && this->fire_period[this->year - 1] >= this->args.TreatmentDelay) {
 			ApplyTreatments(this->availCells, this->treatedCells, this->statusCells,
 			                this->burningCells, this->burntCells,
-			                this->fuelLevels, this->elevations,
+			                this->fuelLevels, this->elevations, this->slopes,
 			                wdf[this->weatherPeriod],
 			                this->rows, this->cols,
 			                this->args.TreatmentBudget,

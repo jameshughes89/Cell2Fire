@@ -87,6 +87,55 @@ double scoreFuelFlank(const Features& f) {
     return fuel_term + f.has_treated_neighbour - f.distance_to_fire;
 }
 
+// Protected division: returns 1.0 when denominator is zero (GP convention).
+inline double pdiv(double a, double b) {
+    return (b == 0.0) ? 1.0 : a / b;
+}
+
+// GP-evolved strategies (one per training condition).
+
+double scoreCell1Baseline(const Features& f) {
+    return f.fuel_level + f.has_treated_neighbour - 3.0 * f.burnable_distance_to_fire;
+}
+
+double scoreCell2Ground(const Features& f) {
+    if (f.unburnable_neighbour_count > 0.0)
+        return 2.0 * f.mean_neighbour_fuel + f.has_treated_neighbour - f.burnable_distance_to_fire;
+    else
+        return f.mean_neighbour_fuel + f.has_treated_neighbour - f.burnable_distance_to_fire - 18.56;
+}
+
+double scoreCell3LowOnly(const Features& f) {
+    if (f.burning_neighbour_count > 0.0)
+        return 1.0 + f.mean_neighbour_fuel / f.burning_neighbour_count + f.has_treated_neighbour;
+    else
+        return 0.0;
+}
+
+double scoreCell4HighOnly(const Features& f) {
+    const double t1 = f.wind_fire_alignment;
+    const double t2 = pdiv(f.wind_fire_alignment, f.burnable_distance_to_fire);
+    const double t3 = pdiv(pdiv(f.wind_fire_alignment, f.burning_neighbour_count),
+                           f.burnable_distance_to_fire);
+    const double min_term = std::min({t1, t2, t3});
+    return min_term + f.has_treated_neighbour - f.burnable_distance_to_fire;
+}
+
+double scoreCell5Hilly(const Features& f) {
+    if (f.burning_neighbour_count > 0.0)
+        return f.treated_neighbour_count;
+    else
+        return -f.slope;
+}
+
+double scoreCell6Barriers(const Features& f) {
+    if (f.burning_neighbour_count > 0.0)
+        return pdiv(f.has_treated_neighbour, f.burning_neighbour_count)
+               - f.mean_neighbour_elevation + 14.58;
+    else
+        return 0.0;
+}
+
 }  // namespace
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -108,6 +157,15 @@ void precomputeElevations(std::vector<double>& elevations,
     normalizeInPlace(elevations);
 }
 
+void precomputeSlopes(std::vector<double>& slopes,
+                      const inputs* df, int nCells) {
+    slopes.assign(nCells, 0.0);
+    for (int i = 0; i < nCells; ++i) {
+        slopes[i] = static_cast<double>(df[i].ps);
+    }
+    normalizeInPlace(slopes);
+}
+
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,
@@ -115,6 +173,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     const std::unordered_set<int>& burntCells,
                     const std::vector<double>& fuelLevels,
                     const std::vector<double>& elevations,
+                    const std::vector<double>& slopes,
                     const weatherDF& weather,
                     int rows, int cols,
                     int budget,
@@ -209,6 +268,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         int burning_count = 0;
         int unburnable_count = 0;
         double neighbour_fuel_sum = 0.0;
+        double neighbour_elev_sum = 0.0;
         int neighbour_fuel_count = 0;
         for (int k = 0; k < 8; ++k) {
             const int nr = row + DR8[k];
@@ -223,6 +283,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
             if (unburnable) ++unburnable_count;
             if (ns == 0) {
                 neighbour_fuel_sum += fuelLevels[nIdx];
+                neighbour_elev_sum += elevations[nIdx];
                 ++neighbour_fuel_count;
             }
         }
@@ -230,6 +291,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         Features f;
         f.fuel_level    = fuelLevels[idx];
         f.elevation     = elevations[idx];
+        f.slope         = slopes[idx];
         f.distance_to_fire = (bestDist == std::numeric_limits<int>::max())
                              ? INF : static_cast<double>(bestDist);
         f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
@@ -239,17 +301,25 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
         f.mean_neighbour_fuel        = (neighbour_fuel_count > 0)
                                        ? neighbour_fuel_sum / neighbour_fuel_count : 0.0;
+        f.mean_neighbour_elevation   = (neighbour_fuel_count > 0)
+                                       ? neighbour_elev_sum / neighbour_fuel_count : 0.0;
         f.burning_neighbour_count    = static_cast<double>(burning_count);
         f.treated_neighbour_count    = static_cast<double>(treated_count);
         f.unburned_neighbour_count   = static_cast<double>(neighbour_fuel_count);
 
         double s;
-        if (strategy == "proximity")           s = scoreProximity(f);
-        else if (strategy == "neighbour_fuel") s = scoreNeighbourFuel(f);
-        else if (strategy == "shielded_ratio") s = scoreShieldedRatio(f);
-        else if (strategy == "open_anchor")    s = scoreOpenAnchor(f);
-        else if (strategy == "fuel_flank")     s = scoreFuelFlank(f);
-        else                                   s = scoreFuelElevation(f);
+        if (strategy == "proximity")            s = scoreProximity(f);
+        else if (strategy == "neighbour_fuel")  s = scoreNeighbourFuel(f);
+        else if (strategy == "shielded_ratio")  s = scoreShieldedRatio(f);
+        else if (strategy == "open_anchor")     s = scoreOpenAnchor(f);
+        else if (strategy == "fuel_flank")      s = scoreFuelFlank(f);
+        else if (strategy == "cell1_baseline")  s = scoreCell1Baseline(f);
+        else if (strategy == "cell2_ground")    s = scoreCell2Ground(f);
+        else if (strategy == "cell3_lowonly")   s = scoreCell3LowOnly(f);
+        else if (strategy == "cell4_highonly")  s = scoreCell4HighOnly(f);
+        else if (strategy == "cell5_hilly")     s = scoreCell5Hilly(f);
+        else if (strategy == "cell6_barriers")  s = scoreCell6Barriers(f);
+        else                                    s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
 
