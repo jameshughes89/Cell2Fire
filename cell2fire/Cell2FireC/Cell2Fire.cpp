@@ -460,6 +460,7 @@ void Cell2Fire::reset(int rnumber, double rnumber2){
 	this->nIgnitions = 0;
 	this->gridNumber = 0;
 	this->done = false;
+	this->maxBurningCells = 0;
 	this->fire_period = vector<int>(this->args.TotalYears, 0);
 	
 	// Initial status grid folder
@@ -1101,12 +1102,16 @@ void Cell2Fire::Results(){
 	float BCells = this->burntCells.size();
 	float NBCells = this->nonBurnableCells.size();
 	float HCells = this->harvestCells.size();
+	float TCells = this->treatedCells.size();
 	
 	std::cout <<"\n----------------------------- Results -----------------------------" << std::endl;
 	std::cout << "Total Available Cells:    " << ACells << " - % of the Forest: " <<  ACells/nCells*100.0 << "%" << std::endl;
 	std::cout << "Total Burnt Cells:        " << BCells << " - % of the Forest: " <<  BCells/nCells*100.0 <<"%" << std::endl;
 	std::cout << "Total Non-Burnable Cells: " << NBCells << " - % of the Forest: " <<  NBCells/nCells*100.0 <<"%"<< std::endl;
 	std::cout << "Total Harvested Cells: " << HCells << " - % of the Forest: " <<  HCells/nCells*100.0 <<"%"<< std::endl;
+	std::cout << "Total Treated Cells: " << TCells << " - % of the Forest: " << TCells/nCells*100.0 << "%" << std::endl;
+	std::cout << "PeakBurning: " << this->maxBurningCells << std::endl;
+	std::cout << "FirePeriods: " << this->fire_period[std::min(this->year, (int)this->fire_period.size()) - 1] << std::endl;
 
 	// Final Grid 
 	if(this->args.FinalGrid){
@@ -1290,6 +1295,9 @@ void Cell2Fire::Step(std::default_random_engine generator){
 
 		// Get Message
 		this->GetMessages(SendMessageList);
+
+		const int burning_now = static_cast<int>(this->burningCells.size());
+		if (burning_now > this->maxBurningCells) this->maxBurningCells = burning_now;
 	}
 	
 	// Operational dynamic

@@ -25,6 +25,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
 import matplotlib.colors as colors
 import cv2
+from PIL import Image
 
 # Extra
 import multiprocessing
@@ -281,11 +282,10 @@ class Statistics(object):
         ax.get_xaxis().tick_bottom()  
         ax.get_yaxis().tick_left() 
 
-        # Title and labels
-        if Title is None:
-            plt.title("Fire Probability Heatmap (nscen="+str(nscen)+")")
-        else:
-            plt.title(Title)
+        # Title and labels — white box ensures readability when composited over forest background
+        _title = "Fire Probability Heatmap (nscen="+str(nscen)+")" if Title is None else Title
+        plt.title(_title,
+                  bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=4))
 
         # Modify existing map to have white values
         cmap = matplotlib.colormaps['RdBu_r']
@@ -979,35 +979,27 @@ class Statistics(object):
     def combinePlot(self, BackgroundPath, fileN, Sim):
         # Read Forest
         ForestFile = os.path.join(BackgroundPath, "InitialForest.png")
-        p1 = cv2.imread(ForestFile) 
+        p1 = Image.open(ForestFile).convert("RGBA")
 
         # Read Evo plot
         fstr = str(fileN).zfill(2)
         PathFile = os.path.join(BackgroundPath, "Plots", "Plots"+ str(Sim), "Fire" + fstr + ".png")
-        p2 = cv2.imread(PathFile) 
+        p2 = Image.open(PathFile).convert("RGBA")
+        if p1.size != p2.size:
+            p2 = p2.resize(p1.size, Image.LANCZOS)
 
-        # Alpha channels
-        p1 = cv2.cvtColor(p1, cv2.COLOR_BGR2RGBA)
-        p2 = cv2.cvtColor(p2, cv2.COLOR_BGR2RGBA)
-        p2[np.all(p2 >= [230, 230, 230, 230], axis=2)] = [0, 0, 0, 1]
+        # Make near-white pixels (unburned cells from the heatmap) transparent
+        # so the forest background shows through beneath the fire overlay.
+        arr = np.array(p2, dtype=np.uint8)
+        near_white = np.all(arr[:, :, :3] >= 230, axis=2)
+        arr[near_white, 3] = 0
+        p2 = Image.fromarray(arr)
 
-        # Axis
-        gca().set_axis_off()
-        subplots_adjust(top = 1, bottom = 0, 
-                        right = 1, left = 0, 
-                        hspace = 0, wspace = 0)
-        margins(0,0)
-        gca().xaxis.set_major_locator(NullLocator())
-        gca().yaxis.set_major_locator(NullLocator())
-
-        # Create plot
-        plt.imshow(p1, zorder=0)
-        plt.imshow(p2, zorder=1)
-        plt.savefig(PathFile, dpi=200, bbox_inches='tight', pad_inches=0, transparent=False)
+        merged = Image.alpha_composite(p1, p2)
+        merged.save(PathFile)
         if self._pdfOutputs:
-            PathFile = os.path.join(BackgroundPath, "Plots", "Plots"+ str(Sim), "Fire" + fstr + ".pdf")
-            plt.savefig(PathFile, dpi=200, bbox_inches='tight', pad_inches=0, transparent=False)
-        plt.close('all')
+            PdfFile = os.path.join(BackgroundPath, "Plots", "Plots"+ str(Sim), "Fire" + fstr + ".pdf")
+            merged.convert("RGB").save(PdfFile)
      
         
     
@@ -1016,7 +1008,7 @@ class Statistics(object):
         # Stats per simulation
         for i in tqdm(range(self._nSims)):
             PlotPath = os.path.join(self._OutFolder, "Plots", "Plots" + str(i + 1))
-            PlotFiles = glob.glob(os.path.join(PlotPath, 'Fire[0-9]*.*'))
+            PlotFiles = sorted(glob.glob(os.path.join(PlotPath, 'Fire[0-9]*.png')))
             
             if multip is False:
                 for (j, _) in enumerate(PlotFiles):

@@ -64,6 +64,9 @@ class Cell2Fire {
 		 double areaCells;
 		 double perimeterCells;
 		 double ROSRV;
+
+		 // Simulation-level accumulators
+		 int maxBurningCells = 0;
 			
 		// Strings	
 		 string gridFolder;
