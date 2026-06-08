@@ -49,7 +49,7 @@ ACTIVE_STRATEGIES = [
 ]
 MIN_DISTS = [0, 2]
 
-SEEDS = list(range(1, 11))
+SEEDS = list(range(1, 6))
 
 COMMON_FLAGS = [
     "--ignitions",
@@ -66,7 +66,7 @@ COMMON_FLAGS = [
     "--no-output",
 ]
 
-MAX_WORKERS = 10
+MAX_WORKERS = 14
 
 RE_BURNT   = re.compile(r"Total Burnt Cells:\s+([\d.]+)\s+-\s+%[^:]+:\s+([\d.]+)%")
 RE_TREATED = re.compile(r"Total Treated Cells:\s+([\d.]+)\s+-\s+%[^:]+:\s+([\d.]+)%")
