@@ -24,6 +24,7 @@ struct Features {
     double burning_neighbour_count;     // 8-conn count of Burning neighbours
     double treated_neighbour_count;     // 8-conn count of Treated neighbours
     double unburned_neighbour_count;    // 8-conn count of Available neighbours
+    double elevation_delta_to_fire;     // elevation[cell] - elevation[nearest burning cell]; 0 if no fire
 };
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -39,7 +40,10 @@ void precomputeSlopes(std::vector<double>& slopes,
 // Strategies: "fuel_elevation", "neighbour_fuel", "proximity", "shielded_ratio",
 //             "open_anchor", "fuel_flank", "cell1_baseline", "cell2_ground",
 //             "cell3_lowonly", "cell4_highonly", "cell5_hilly", "cell6_barriers",
-//             "random", "none"
+//             "cell7_cranked", "fuel_only", "burning_nbrs", "head_fire",
+//             "fire_run", "flank_attack", "composite_threat", "ridgeline",
+//             "indirect_attack", "anchor_flank", "frontier_protect",
+//             "frontier_anchored", "uphill_intercept", "random", "none"
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,

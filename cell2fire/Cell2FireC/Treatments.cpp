@@ -136,6 +136,86 @@ double scoreCell6Barriers(const Features& f) {
         return 0.0;
 }
 
+double scoreCell7Cranked(const Features& f) {
+    return pdiv(
+        f.has_treated_neighbour
+            + pdiv(f.wind_fire_alignment, f.burning_neighbour_count)
+            + f.mean_neighbour_fuel,
+        f.burnable_distance_to_fire
+    );
+}
+
+// Doctrine baselines ported from wildfireGP/strategies.py.
+// MAX_ENGAGEMENT_DIST matches the max_distance=10 default used there.
+static const double MAX_ENGAGEMENT_DIST = 10.0;
+static const double OUT_OF_RANGE = -1.0e9;
+
+double scoreFuelOnly(const Features& f) {
+    return f.fuel_level + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreBurningNbrs(const Features& f) {
+    return f.burning_neighbour_count + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreHeadFire(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.wind_fire_alignment / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreFireRun(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.fuel_level * f.wind_fire_alignment / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreFlankAttack(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.fuel_level * (1.0 - std::abs(f.wind_fire_alignment)) / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreCompositeThreat(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.fuel_level * f.slope * std::max(f.wind_fire_alignment, 0.0)
+           / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreRidgeline(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.elevation + f.slope + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreIndirectAttack(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return f.mean_neighbour_fuel / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreAnchorFlank(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    const double barriers = f.unburnable_neighbour_count + f.treated_neighbour_count;
+    return f.fuel_level * barriers / (1.0 + f.distance_to_fire);
+}
+
+double scoreFrontierProtect(const Features& f) {
+    if (f.burning_neighbour_count == 0.0) return OUT_OF_RANGE;
+    return f.unburned_neighbour_count;
+}
+
+double scoreFrontierAnchored(const Features& f) {
+    if (f.burning_neighbour_count == 0.0) return OUT_OF_RANGE;
+    return f.unburned_neighbour_count + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
+double scoreUphillIntercept(const Features& f) {
+    if (f.distance_to_fire > MAX_ENGAGEMENT_DIST) return OUT_OF_RANGE;
+    return std::max(f.elevation_delta_to_fire, 0.0) / (1.0 + f.distance_to_fire)
+           + ANCHOR_WEIGHT * f.has_treated_neighbour;
+}
+
 }  // namespace
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -306,6 +386,8 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         f.burning_neighbour_count    = static_cast<double>(burning_count);
         f.treated_neighbour_count    = static_cast<double>(treated_count);
         f.unburned_neighbour_count   = static_cast<double>(neighbour_fuel_count);
+        f.elevation_delta_to_fire    = (bestFireIdx >= 0)
+                                       ? elevations[idx] - elevations[bestFireIdx] : 0.0;
 
         double s;
         if (strategy == "proximity")            s = scoreProximity(f);
@@ -319,7 +401,20 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         else if (strategy == "cell4_highonly")  s = scoreCell4HighOnly(f);
         else if (strategy == "cell5_hilly")     s = scoreCell5Hilly(f);
         else if (strategy == "cell6_barriers")  s = scoreCell6Barriers(f);
-        else                                    s = scoreFuelElevation(f);
+        else if (strategy == "cell7_cranked")    s = scoreCell7Cranked(f);
+        else if (strategy == "fuel_only")        s = scoreFuelOnly(f);
+        else if (strategy == "burning_nbrs")     s = scoreBurningNbrs(f);
+        else if (strategy == "head_fire")        s = scoreHeadFire(f);
+        else if (strategy == "fire_run")         s = scoreFireRun(f);
+        else if (strategy == "flank_attack")     s = scoreFlankAttack(f);
+        else if (strategy == "composite_threat") s = scoreCompositeThreat(f);
+        else if (strategy == "ridgeline")        s = scoreRidgeline(f);
+        else if (strategy == "indirect_attack")  s = scoreIndirectAttack(f);
+        else if (strategy == "anchor_flank")     s = scoreAnchorFlank(f);
+        else if (strategy == "frontier_protect") s = scoreFrontierProtect(f);
+        else if (strategy == "frontier_anchored")s = scoreFrontierAnchored(f);
+        else if (strategy == "uphill_intercept") s = scoreUphillIntercept(f);
+        else                                     s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
 
