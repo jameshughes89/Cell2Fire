@@ -22,12 +22,14 @@ os.environ.setdefault("SEED_END", "30")
 
 import run_stochastic as rs  # noqa: E402
 
-rs.ACTIVE_STRATEGIES = [
-    "proxA_5.0",
+# Priority tiers: tier 1 answers open questions; tier 2 (distance removed) is already random-level on wildfireGP
+# and is run last.
+TIER1 = [
+    "proxA_5.0", "oa_simplified", "oa_gated",
     "lowonly_plusdist", "hilly_plusdist", "barriers_plusdist",
-    "oa_nodist", "hb_nodist", "ga_nodist",
-    "oa_gated", "oa_simplified",
 ]
+TIER2 = ["oa_nodist", "hb_nodist", "ga_nodist"]
+rs.ACTIVE_STRATEGIES = TIER1 + TIER2
 
 
 def build_jobs():
@@ -36,18 +38,19 @@ def build_jobs():
         for r in csv.DictReader(open(rs.OUT_CSV)):
             if r["returncode"] == "0":
                 done.add((r["quadrant"], r["wind_speed"], r["wind_dir"], r["strategy"], r["min_dist"], r["seed"]))
-    # Seed-major order: every strategy and scenario completes seeds 1-10 before 11-20, so a complete paired subset
-    # is available early in a multi-day run.
+    # Tier-major, then seed-major: tier-1 strategies complete seed by seed across every scenario before any tier-2
+    # job starts, so whatever finishes first is a complete paired subset of the informative variants.
     jobs = []
-    for seed in rs.SEEDS:
-        for quad, cell_id in rs.IGNITIONS.items():
-            for wind_speed in rs.WIND_SPEEDS:
-                for wind_dir in rs.WIND_DIRS:
-                    for strategy in rs.ACTIVE_STRATEGIES:
-                        for min_dist in rs.MIN_DISTS:
-                            key = (quad, wind_speed, str(wind_dir), strategy, str(min_dist), str(seed))
-                            if key not in done:
-                                jobs.append((quad, cell_id, wind_speed, wind_dir, strategy, min_dist, seed))
+    for tier in (TIER1, TIER2):
+        for seed in rs.SEEDS:
+            for quad, cell_id in rs.IGNITIONS.items():
+                for wind_speed in rs.WIND_SPEEDS:
+                    for wind_dir in rs.WIND_DIRS:
+                        for strategy in tier:
+                            for min_dist in rs.MIN_DISTS:
+                                key = (quad, wind_speed, str(wind_dir), strategy, str(min_dist), str(seed))
+                                if key not in done:
+                                    jobs.append((quad, cell_id, wind_speed, wind_dir, strategy, min_dist, seed))
     return jobs
 
 
