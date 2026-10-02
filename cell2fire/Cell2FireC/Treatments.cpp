@@ -145,6 +145,55 @@ double scoreCell7Cranked(const Features& f) {
     );
 }
 
+// Structural ablation variants (wildfireGP results/ablation_2026-10-02). Each mirrors the matching wildfireGP
+// expression term for term, built on the C++ ports above so that only the ablated term differs.
+
+// Distance-to-fire added outside the fire-front gate of the three policies that fail to transfer.
+double scoreLowOnlyPlusDist(const Features& f) {
+    return scoreCell3LowOnly(f) - f.burnable_distance_to_fire;
+}
+
+double scoreHillyPlusDist(const Features& f) {
+    return scoreCell5Hilly(f) - f.burnable_distance_to_fire;
+}
+
+double scoreBarriersPlusDist(const Features& f) {
+    return scoreCell6Barriers(f) - f.burnable_distance_to_fire;
+}
+
+// Distance-to-fire replaced by the constant 1 in the three transferring policies.
+double scoreOpenAnchorNoDist(const Features& f) {
+    const double denom = std::max(0.8, f.unburned_neighbour_count);
+    return f.treated_neighbour_count + (f.mean_neighbour_fuel - 16.0) / denom;
+}
+
+double scoreHighOnlyNoDist(const Features& f) {
+    const double t1 = f.wind_fire_alignment;
+    const double t2 = pdiv(f.wind_fire_alignment, 1.0);
+    const double t3 = pdiv(pdiv(f.wind_fire_alignment, f.burning_neighbour_count), 1.0);
+    return std::min({t1, t2, t3}) + f.has_treated_neighbour - 1.0;
+}
+
+double scoreGaleNoDist(const Features& f) {
+    return pdiv(
+        f.has_treated_neighbour
+            + pdiv(f.wind_fire_alignment, f.burning_neighbour_count)
+            + f.mean_neighbour_fuel,
+        1.0
+    );
+}
+
+// open_anchor restricted to cells touching the fire, as in the frontier-gated policies.
+double scoreOpenAnchorGated(const Features& f) {
+    return (f.burning_neighbour_count > 0.0) ? scoreOpenAnchor(f) : -1000.0;
+}
+
+// Eq. 3 of the paper exactly as printed: T - 16 d / max(0.8, U).
+double scoreOpenAnchorSimplified(const Features& f) {
+    return f.treated_neighbour_count
+         - pdiv(16.0 * f.burnable_distance_to_fire, std::max(0.8, f.unburned_neighbour_count));
+}
+
 // Doctrine baselines ported from wildfireGP/strategies.py.
 // MAX_ENGAGEMENT_DIST matches the max_distance=10 default used there.
 static const double MAX_ENGAGEMENT_DIST = 10.0;
@@ -320,6 +369,11 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
     // Per-cell feature + score computation. Called for initial scoring and for
     // rescoring the 8 neighbours of a just-treated cell (the only cells whose
     // has_treated_neighbour / unburnable_neighbour_count can have changed).
+    // Tuned-proximity ablation: "proxA_<w>" scores -d + w * has_treated_neighbour, "proxT_<w>" uses the count.
+    const bool isProxA = strategy.rfind("proxA_", 0) == 0;
+    const bool isProxT = strategy.rfind("proxT_", 0) == 0;
+    const double proxWeight = (isProxA || isProxT) ? std::stod(strategy.substr(6)) : 0.0;
+
     auto computeScore = [&](int id) -> double {
         const int idx = id - 1;
         const int row = idx / cols;
@@ -414,6 +468,16 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         else if (strategy == "frontier_protect") s = scoreFrontierProtect(f);
         else if (strategy == "frontier_anchored")s = scoreFrontierAnchored(f);
         else if (strategy == "uphill_intercept") s = scoreUphillIntercept(f);
+        else if (isProxA)                        s = -f.burnable_distance_to_fire + proxWeight * f.has_treated_neighbour;
+        else if (isProxT)                        s = -f.burnable_distance_to_fire + proxWeight * f.treated_neighbour_count;
+        else if (strategy == "lowonly_plusdist") s = scoreLowOnlyPlusDist(f);
+        else if (strategy == "hilly_plusdist")   s = scoreHillyPlusDist(f);
+        else if (strategy == "barriers_plusdist")s = scoreBarriersPlusDist(f);
+        else if (strategy == "oa_nodist")        s = scoreOpenAnchorNoDist(f);
+        else if (strategy == "hb_nodist")        s = scoreHighOnlyNoDist(f);
+        else if (strategy == "ga_nodist")        s = scoreGaleNoDist(f);
+        else if (strategy == "oa_gated")         s = scoreOpenAnchorGated(f);
+        else if (strategy == "oa_simplified")    s = scoreOpenAnchorSimplified(f);
         else                                     s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };
