@@ -295,6 +295,146 @@ void precomputeSlopes(std::vector<double>& slopes,
     normalizeInPlace(slopes);
 }
 
+FeatureContext buildFeatureContext(const std::vector<int>& statusCells,
+                                   const std::unordered_set<int>& burningCells,
+                                   const std::unordered_set<int>& burntCells,
+                                   const std::vector<double>& fuelLevels,
+                                   const std::vector<double>& elevations,
+                                   const std::vector<double>& slopes,
+                                   const weatherDF& weather,
+                                   int rows, int cols) {
+    const int nCells = rows * cols;
+    FeatureContext ctx;
+    ctx.rows = rows;
+    ctx.cols = cols;
+    ctx.statusCells = &statusCells;
+    ctx.fuelLevels = &fuelLevels;
+    ctx.elevations = &elevations;
+    ctx.slopes = &slopes;
+
+    // Cell2Fire tracks fire state in burningCells/burntCells, not statusCells: cells ignited by spread keep status 0.
+    // burntCells includes cells that are still burning, so "burned out" is burnt and not burning.
+    ctx.burning.assign(nCells, 0);
+    ctx.burnedOut.assign(nCells, 0);
+    for (int id : burningCells) ctx.burning[id - 1] = 1;
+    for (int id : burntCells) {
+        if (!ctx.burning[id - 1]) ctx.burnedOut[id - 1] = 1;
+    }
+    ctx.burningIdx.clear();
+    for (int i = 0; i < nCells; ++i) {
+        if (ctx.burning[i]) ctx.burningIdx.push_back(i);
+    }
+
+    // burnable_distance_to_fire: multi-source BFS from burning cells through unburned burnable cells only.
+    ctx.burnableDist.assign(nCells, std::numeric_limits<int>::max());
+    std::deque<int> queue;
+    for (int b : ctx.burningIdx) {
+        ctx.burnableDist[b] = 0;
+        queue.push_back(b);
+    }
+    while (!queue.empty()) {
+        const int cur = queue.front();
+        queue.pop_front();
+        const int r = cur / cols;
+        const int c = cur % cols;
+        for (int k = 0; k < 8; ++k) {
+            const int nr = r + DR8[k];
+            const int nc = c + DC8[k];
+            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+            const int nIdx = nr * cols + nc;
+            if (ctx.burnableDist[nIdx] != std::numeric_limits<int>::max()) continue;
+            if (statusCells[nIdx] != 0 || ctx.burning[nIdx] || ctx.burnedOut[nIdx]) continue;
+            ctx.burnableDist[nIdx] = ctx.burnableDist[cur] + 1;
+            queue.push_back(nIdx);
+        }
+    }
+
+    // waz is meteorological: direction wind comes FROM. Positive alignment
+    // means the candidate cell is downwind of the fire.
+    const double DEG2RAD = M_PI / 180.0;
+    const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
+    ctx.wind_x = std::sin(waz_rad);
+    ctx.wind_y = std::cos(waz_rad);
+    return ctx;
+}
+
+Features computeFeatures(const FeatureContext& ctx, int idx) {
+    const double INF = std::numeric_limits<double>::infinity();
+    const int rows = ctx.rows;
+    const int cols = ctx.cols;
+    const std::vector<int>& statusCells = *ctx.statusCells;
+    const std::vector<double>& fuelLevels = *ctx.fuelLevels;
+    const std::vector<double>& elevations = *ctx.elevations;
+    const int row = idx / cols;
+    const int col = idx % cols;
+
+    int bestDist = std::numeric_limits<int>::max();
+    int bestFireIdx = -1;
+    for (int bIdx : ctx.burningIdx) {
+        const int dr = std::abs(bIdx / cols - row);
+        const int dc = std::abs(bIdx % cols - col);
+        const int d = (dr > dc) ? dr : dc;
+        if (d < bestDist) { bestDist = d; bestFireIdx = bIdx; }
+    }
+
+    double wind_align = 0.0;
+    if (bestFireIdx >= 0 && bestFireIdx != idx) {
+        const double dx = static_cast<double>(bestFireIdx % cols - col);
+        // row increases southward, so flip sign for north-positive math frame
+        const double dy = static_cast<double>(row - bestFireIdx / cols);
+        const double mag = std::sqrt(dx * dx + dy * dy);
+        if (mag > 0.0) wind_align = (ctx.wind_x * dx + ctx.wind_y * dy) / mag;
+    }
+
+    // Neighbourhood counts follow wildfireGP's NodeState semantics: non-fuel (4) and harvested (3) cells are
+    // unburnable terrain that is still "unburned", and burned-out cells contribute zero fuel.
+    int treated_count = 0;
+    int burning_count = 0;
+    int unburnable_count = 0;
+    int unburned_count = 0;
+    int neighbour_count = 0;
+    double neighbour_fuel_sum = 0.0;
+    double neighbour_elev_sum = 0.0;
+    for (int k = 0; k < 8; ++k) {
+        const int nr = row + DR8[k];
+        const int nc = col + DC8[k];
+        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+        const int nIdx = nr * cols + nc;
+        const int ns = statusCells[nIdx];
+        const bool burning = ctx.burning[nIdx] != 0;
+        const bool burnedOut = ctx.burnedOut[nIdx] != 0;
+        const bool treated = (ns == 5);
+        const bool nonBurnable = (ns == 3 || ns == 4);
+        ++neighbour_count;
+        if (treated) ++treated_count;
+        if (burning) ++burning_count;
+        if (burnedOut || treated || nonBurnable) ++unburnable_count;
+        if (!burning && !burnedOut && !treated) ++unburned_count;
+        neighbour_fuel_sum += burnedOut ? 0.0 : fuelLevels[nIdx];
+        neighbour_elev_sum += elevations[nIdx];
+    }
+
+    Features f;
+    f.fuel_level    = fuelLevels[idx];
+    f.elevation     = elevations[idx];
+    f.slope         = (*ctx.slopes)[idx];
+    f.distance_to_fire = (bestDist == std::numeric_limits<int>::max())
+                         ? INF : static_cast<double>(bestDist);
+    f.burnable_distance_to_fire = (ctx.burnableDist[idx] == std::numeric_limits<int>::max())
+                                  ? INF : static_cast<double>(ctx.burnableDist[idx]);
+    f.wind_fire_alignment        = wind_align;
+    f.has_treated_neighbour      = (treated_count > 0) ? 1.0 : 0.0;
+    f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
+    f.mean_neighbour_fuel        = (neighbour_count > 0) ? neighbour_fuel_sum / neighbour_count : 0.0;
+    f.mean_neighbour_elevation   = (neighbour_count > 0) ? neighbour_elev_sum / neighbour_count : 0.0;
+    f.burning_neighbour_count    = static_cast<double>(burning_count);
+    f.treated_neighbour_count    = static_cast<double>(treated_count);
+    f.unburned_neighbour_count   = static_cast<double>(unburned_count);
+    f.elevation_delta_to_fire    = (bestFireIdx >= 0 && bestFireIdx != idx)
+                                   ? elevations[idx] - elevations[bestFireIdx] : 0.0;
+    return f;
+}
+
 int ApplyTreatments(std::unordered_set<int>& availCells,
                     std::unordered_set<int>& treatedCells,
                     std::vector<int>& statusCells,
@@ -312,36 +452,10 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
     if (strategy == "none") return 0;
     if (budget <= 0 || availCells.empty() || burningCells.empty()) return 0;
 
-    const int nCells = rows * cols;
     const double INF = std::numeric_limits<double>::infinity();
-
-    // Multi-source BFS from burning cells through Available-only cells.
-    // Used both for minDist filtering and for burnable_distance_to_fire feature.
-    std::vector<int> burnableDist(nCells, std::numeric_limits<int>::max());
-    {
-        std::deque<int> queue;
-        for (int bId : burningCells) {
-            burnableDist[bId - 1] = 0;
-            queue.push_back(bId - 1);
-        }
-        while (!queue.empty()) {
-            const int cur = queue.front();
-            queue.pop_front();
-            const int curDist = burnableDist[cur];
-            const int r = cur / cols;
-            const int c = cur % cols;
-            for (int k = 0; k < 8; ++k) {
-                const int nr = r + DR8[k];
-                const int nc = c + DC8[k];
-                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-                const int nIdx = nr * cols + nc;
-                if (burnableDist[nIdx] != std::numeric_limits<int>::max()) continue;
-                if (statusCells[nIdx] != 0) continue;
-                burnableDist[nIdx] = curDist + 1;
-                queue.push_back(nIdx);
-            }
-        }
-    }
+    const FeatureContext ctx = buildFeatureContext(statusCells, burningCells, burntCells, fuelLevels, elevations,
+                                                   slopes, weather, rows, cols);
+    const std::vector<int>& burnableDist = ctx.burnableDist;
 
     if (strategy == "random") {
         std::vector<int> ids;
@@ -359,13 +473,6 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         return k;
     }
 
-    // waz is meteorological: direction wind comes FROM. Positive alignment
-    // means the candidate cell is downwind of the fire.
-    const double DEG2RAD = M_PI / 180.0;
-    const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
-    const double wind_x = std::sin(waz_rad);
-    const double wind_y = std::cos(waz_rad);
-
     // Per-cell feature + score computation. Called for initial scoring and for
     // rescoring the 8 neighbours of a just-treated cell (the only cells whose
     // has_treated_neighbour / unburnable_neighbour_count can have changed).
@@ -375,73 +482,7 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
     const double proxWeight = (isProxA || isProxT) ? std::stod(strategy.substr(6)) : 0.0;
 
     auto computeScore = [&](int id) -> double {
-        const int idx = id - 1;
-        const int row = idx / cols;
-        const int col = idx % cols;
-
-        int bestDist = std::numeric_limits<int>::max();
-        int bestFireIdx = -1;
-        for (int bId : burningCells) {
-            const int bIdx = bId - 1;
-            const int dr = std::abs(bIdx / cols - row);
-            const int dc = std::abs(bIdx % cols - col);
-            const int d = (dr > dc) ? dr : dc;
-            if (d < bestDist) { bestDist = d; bestFireIdx = bIdx; }
-        }
-
-        double wind_align = 0.0;
-        if (bestFireIdx >= 0 && bestFireIdx != idx) {
-            const double dx = static_cast<double>(bestFireIdx % cols - col);
-            // row increases southward, so flip sign for north-positive math frame
-            const double dy = static_cast<double>(row - bestFireIdx / cols);
-            const double mag = std::sqrt(dx * dx + dy * dy);
-            if (mag > 0.0) wind_align = (wind_x * dx + wind_y * dy) / mag;
-        }
-
-        int treated_count = 0;
-        int burning_count = 0;
-        int unburnable_count = 0;
-        double neighbour_fuel_sum = 0.0;
-        double neighbour_elev_sum = 0.0;
-        int neighbour_fuel_count = 0;
-        for (int k = 0; k < 8; ++k) {
-            const int nr = row + DR8[k];
-            const int nc = col + DC8[k];
-            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-            const int nIdx = nr * cols + nc;
-            const int ns = statusCells[nIdx];
-            if (ns == 5) ++treated_count;
-            if (ns == 1) ++burning_count;
-            // statusCells isn't updated to 2 for burnt cells; check burntCells directly
-            const bool unburnable = (ns >= 3) || (burntCells.count(nIdx + 1) > 0);
-            if (unburnable) ++unburnable_count;
-            if (ns == 0) {
-                neighbour_fuel_sum += fuelLevels[nIdx];
-                neighbour_elev_sum += elevations[nIdx];
-                ++neighbour_fuel_count;
-            }
-        }
-
-        Features f;
-        f.fuel_level    = fuelLevels[idx];
-        f.elevation     = elevations[idx];
-        f.slope         = slopes[idx];
-        f.distance_to_fire = (bestDist == std::numeric_limits<int>::max())
-                             ? INF : static_cast<double>(bestDist);
-        f.burnable_distance_to_fire = (burnableDist[idx] == std::numeric_limits<int>::max())
-                                      ? INF : static_cast<double>(burnableDist[idx]);
-        f.wind_fire_alignment        = wind_align;
-        f.has_treated_neighbour      = (treated_count > 0) ? 1.0 : 0.0;
-        f.unburnable_neighbour_count = static_cast<double>(unburnable_count);
-        f.mean_neighbour_fuel        = (neighbour_fuel_count > 0)
-                                       ? neighbour_fuel_sum / neighbour_fuel_count : 0.0;
-        f.mean_neighbour_elevation   = (neighbour_fuel_count > 0)
-                                       ? neighbour_elev_sum / neighbour_fuel_count : 0.0;
-        f.burning_neighbour_count    = static_cast<double>(burning_count);
-        f.treated_neighbour_count    = static_cast<double>(treated_count);
-        f.unburned_neighbour_count   = static_cast<double>(neighbour_fuel_count);
-        f.elevation_delta_to_fire    = (bestFireIdx >= 0)
-                                       ? elevations[idx] - elevations[bestFireIdx] : 0.0;
+        const Features f = computeFeatures(ctx, id - 1);
 
         double s;
         if (strategy == "proximity")            s = scoreProximity(f);
