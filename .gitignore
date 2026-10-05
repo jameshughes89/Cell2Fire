@@ -33,3 +33,6 @@ simOuts/
 gifs/
 tmp/
 .gif_tmp/
+
+# compiled feature-parity harness
+tests/feature_parity/build/
