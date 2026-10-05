@@ -39,6 +39,8 @@ struct FeatureContext {
     std::vector<char> burning;
     std::vector<char> burnedOut;
     std::vector<int> burningIdx;    // ascending (row-major), matching wildfireGP's np.argwhere seed order
+    std::vector<int> fireDist;      // Chebyshev distance to nearest burning cell; INT_MAX if no fire
+    std::vector<int> nearestFire;   // index of that burning cell (wildfireGP BFS tie order); -1 if no fire
     std::vector<int> burnableDist;  // BFS hops through unburned burnable cells; INT_MAX if unreachable
     double wind_x;
     double wind_y;

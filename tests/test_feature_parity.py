@@ -48,11 +48,6 @@ FEATURES = [
     "elevation_delta_to_fire",
 ]
 
-# Features that depend on which burning cell is nearest. Until the nearest fire is found by the same BFS as
-# wildfireGP, ties between equidistant burning cells may resolve differently, so these are compared only on cells
-# with a unique nearest burning cell.
-NEAREST_FIRE_FEATURES = {"wind_fire_alignment", "elevation_delta_to_fire"}
-
 # (seed, water_fraction, rock_fraction, wind_direction, wind_speed, steps)
 STATES = [
     (1, 0.0, 0.0, 0, 10.0, 6),
@@ -137,14 +132,8 @@ def cell2fire_features(state, pristine_fuel, wind_dir: int) -> np.ndarray:
     return np.array([[float(v) for v in row[1:]] for row in rows])
 
 
-def unique_nearest_fire(state, node: tuple) -> bool:
-    burning = np.argwhere(state.state == NodeState.BURNING)
-    dist = np.maximum(np.abs(burning[:, 0] - node[0]), np.abs(burning[:, 1] - node[1]))
-    return int((dist == dist.min()).sum()) == 1
-
-
 @functools.lru_cache(maxsize=None)
-def comparison(state_index: int) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+def comparison(state_index: int) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     seed, water, rock, wind_dir, wind_speed, steps = STATES[state_index]
     state, pristine_fuel = build_wildfiregp_state(seed, water, rock, wind_dir, wind_speed, steps)
     ported = cell2fire_features(state, pristine_fuel, wind_dir)
@@ -154,18 +143,16 @@ def comparison(state_index: int) -> dict[str, tuple[np.ndarray, np.ndarray, np.n
             (state.state == NodeState.UNBURNED) & (state.terrain == TerrainType.LAND) & (state.fuel > 0.0)
         )
     ]
-    unique = np.array([unique_nearest_fire(state, node) for node in candidates])
     out = {}
     for j, name in enumerate(FEATURES):
         expected = np.array([float(getattr(wfgp_features, name)(state, node)) for node in candidates])
         actual = np.array([ported[r * COLS + c, j] for r, c in candidates])
-        out[name] = (expected, actual, unique)
+        out[name] = (expected, actual)
     return out
 
 
 @pytest.mark.parametrize("feature", FEATURES)
 @pytest.mark.parametrize("state_index", range(len(STATES)))
 def test_feature_matches_wildfiregp(state_index: int, feature: str) -> None:
-    expected, actual, unique = comparison(state_index)[feature]
-    mask = unique if feature in NEAREST_FIRE_FEATURES else np.ones_like(unique)
-    assert np.allclose(actual[mask], expected[mask], rtol=1e-9, atol=1e-9)
+    expected, actual = comparison(state_index)[feature]
+    assert np.allclose(actual, expected, rtol=1e-9, atol=1e-9)

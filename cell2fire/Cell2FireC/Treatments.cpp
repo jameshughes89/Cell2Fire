@@ -325,6 +325,36 @@ FeatureContext buildFeatureContext(const std::vector<int>& statusCells,
         if (ctx.burning[i]) ctx.burningIdx.push_back(i);
     }
 
+    // distance_to_fire and nearest burning cell: unobstructed multi-source BFS from burning cells. BFS level is the
+    // Chebyshev distance, and seeding in row-major order with DR8/DC8 neighbour order reproduces wildfireGP's
+    // precompute_fire_map, including which equidistant burning cell is "nearest".
+    ctx.fireDist.assign(nCells, std::numeric_limits<int>::max());
+    ctx.nearestFire.assign(nCells, -1);
+    {
+        std::deque<int> queue;
+        for (int b : ctx.burningIdx) {
+            ctx.fireDist[b] = 0;
+            ctx.nearestFire[b] = b;
+            queue.push_back(b);
+        }
+        while (!queue.empty()) {
+            const int cur = queue.front();
+            queue.pop_front();
+            const int r = cur / cols;
+            const int c = cur % cols;
+            for (int k = 0; k < 8; ++k) {
+                const int nr = r + DR8[k];
+                const int nc = c + DC8[k];
+                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                const int nIdx = nr * cols + nc;
+                if (ctx.fireDist[nIdx] != std::numeric_limits<int>::max()) continue;
+                ctx.fireDist[nIdx] = ctx.fireDist[cur] + 1;
+                ctx.nearestFire[nIdx] = ctx.nearestFire[cur];
+                queue.push_back(nIdx);
+            }
+        }
+    }
+
     // burnable_distance_to_fire: multi-source BFS from burning cells through unburned burnable cells only.
     ctx.burnableDist.assign(nCells, std::numeric_limits<int>::max());
     std::deque<int> queue;
@@ -368,14 +398,8 @@ Features computeFeatures(const FeatureContext& ctx, int idx) {
     const int row = idx / cols;
     const int col = idx % cols;
 
-    int bestDist = std::numeric_limits<int>::max();
-    int bestFireIdx = -1;
-    for (int bIdx : ctx.burningIdx) {
-        const int dr = std::abs(bIdx / cols - row);
-        const int dc = std::abs(bIdx % cols - col);
-        const int d = (dr > dc) ? dr : dc;
-        if (d < bestDist) { bestDist = d; bestFireIdx = bIdx; }
-    }
+    const int bestDist = ctx.fireDist[idx];
+    const int bestFireIdx = ctx.nearestFire[idx];
 
     double wind_align = 0.0;
     if (bestFireIdx >= 0 && bestFireIdx != idx) {
