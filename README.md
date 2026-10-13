@@ -1,6 +1,6 @@
 # Cell2Fire: A Cell Based Forest Fire Growth Model  C++/Python
 
-**This is a fork of [cell2fire/Cell2Fire](https://github.com/cell2fire/Cell2Fire) by James Hughes.**
+**This is a fork of [cell2fire/Cell2Fire](https://github.com/cell2fire/Cell2Fire).**
 The original authors are Cristobal Pais, Jaime Carrasco, David Martell, David L. Woodruff, and Andres Weintraub.
 
 # Disclaimer
