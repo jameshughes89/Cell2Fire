@@ -36,3 +36,7 @@ tmp/
 
 # compiled feature-parity harness
 tests/feature_parity/build/
+
+# AI-assistant working notes (kept locally, not part of the project)
+CLAUDE.md
+.claude/
