@@ -1286,7 +1286,8 @@ void Cell2Fire::Step(std::default_random_engine generator){
 			                this->args.TreatmentBudget,
 			                this->args.TreatmentStrategy,
 			                generator,
-			                this->args.TreatmentMinDist);
+			                this->args.TreatmentMinDist,
+			                this->args.RLReferenceCells);
 		}
 
 		// Fire Spread (one time step of RL - Operational)

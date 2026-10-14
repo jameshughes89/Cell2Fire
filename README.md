@@ -67,6 +67,7 @@ act on the simulation each timestep.
 | `--TreatmentDelay` | int | `0` | Fire periods to skip before the first treatment is applied. |
 | `--TreatmentStrategy` | str | `fuel_elevation` | Scoring strategy (see table above). |
 | `--TreatmentMinDist` | int | `0` | Minimum BFS hops from the fire front; candidates closer than this are excluded. |
+| `--RLReferenceCells` | int | `2500` | For `--TreatmentStrategy rl` only: cell count of the wildfireGP grid the learned policy was trained on (see below). `0` disables rescaling. |
 
 Example (dogrib, proximity strategy, calibrated parameters):
 ```
@@ -80,6 +81,43 @@ python main.py \
   --TreatmentBudget 3 --TreatmentDelay 3 --TreatmentStrategy proximity \
   --grids --allPlots --combine --stats
 ```
+
+## Learned-policy (RL) hook
+
+A learned policy, such as one trained with reinforcement learning on the
+[wildfireGP](https://github.com/JamesHughes89/wildfireGP) simulator (`wildfireGP.rl`), can be run in Cell2Fire as
+`--TreatmentStrategy rl`. The fork provides the hook only, not a model: you supply a C++ header that scores one cell.
+
+The header must define, in namespace `wildfire_rl`:
+
+```cpp
+namespace wildfire_rl {
+constexpr int N_FEATURES = 22;
+float score_cell(const float* features);  // higher = treat sooner
+}
+```
+
+Build with it (rebuild with `make clean` whenever the header changes):
+
+```
+cd cell2fire/Cell2FireC
+make clean && make RL_SCORER=/absolute/path/to/scorer.h
+```
+
+A default build has no `rl` strategy, and asking for it exits with an error.
+
+`score_cell` receives the 22 features of `wildfireGP.rl.features.FEATURE_ORDER`, in that order, computed with the same
+definitions as wildfireGP (checked by `tests/test_feature_parity.py`) and these conventions:
+
+- **Unreachable distances.** `distance_to_fire` and `burnable_distance_to_fire` are `max(rows, cols)` when no burning
+  cell can be reached, as in `wildfireGP.rl.features`, so the vector is always finite.
+- **Landscape size.** `reachable_unburned_area` and the four `total_*` counts scale with landscape size. They are
+  multiplied by `RLReferenceCells / (rows * cols)`, so a policy trained on a small wildfireGP grid sees a larger
+  landscape on its training scale. The default, 2500, is designed for policies trained on wildfireGP's 50x50 grid; set
+  it to the cell count of your training grid, or to `0` to pass raw counts.
+- **Fuel moisture.** `fuel_moisture` is fixed at 0.2, wildfireGP's training value. Cell2Fire models moisture through
+  its FBP inputs, not through this feature.
+- **Wind speed** is in km/h, as in wildfireGP.
 
 ## Status
 

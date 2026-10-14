@@ -1,9 +1,18 @@
 #include "Treatments.h"
 
+// A learned-policy scorer is compiled in with `make RL_SCORER=/path/to/scorer.h` (see README). The header must define
+// wildfire_rl::N_FEATURES and float wildfire_rl::score_cell(const float* features).
+#ifdef WILDFIRE_RL_SCORER
+#include WILDFIRE_RL_SCORER
+static_assert(wildfire_rl::N_FEATURES == RL_N_FEATURES, "learned-policy scorer must take the 22 RL features");
+#endif
+
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <iostream>
 #include <limits>
 #include <random>
 #include <string>
@@ -265,6 +274,14 @@ double scoreUphillIntercept(const Features& f) {
            + ANCHOR_WEIGHT * f.has_treated_neighbour;
 }
 
+#ifdef WILDFIRE_RL_SCORER
+double scoreRL(const Features& f, const FeatureContext& ctx, int referenceCells) {
+    float input[RL_N_FEATURES];
+    rlInputVector(f, ctx, referenceCells, input);
+    return static_cast<double>(wildfire_rl::score_cell(input));
+}
+#endif
+
 }  // namespace
 
 void precomputeFuelLevels(std::vector<double>& fuelLevels,
@@ -295,6 +312,65 @@ void precomputeSlopes(std::vector<double>& slopes,
     normalizeInPlace(slopes);
 }
 
+// Landscape-wide counts, burning cells at Chebyshev distance 2, and the size of each cell's Moore-connected component of
+// unburned burnable land: the features a learned policy sees beyond those the hand-coded and evolved strategies use.
+static void addLearnedPolicyContext(FeatureContext& ctx, const std::vector<int>& statusCells) {
+    const int rows = ctx.rows;
+    const int cols = ctx.cols;
+    const int nCells = rows * cols;
+    for (int i = 0; i < nCells; ++i) {
+        if (ctx.burnedOut[i]) ++ctx.nBurnedOut;
+        if (statusCells[i] == 5) ++ctx.nTreated;
+    }
+
+    ctx.twoHopBurning.assign(nCells, 0);
+    for (int b : ctx.burningIdx) {
+        const int br = b / cols;
+        const int bc = b % cols;
+        for (int dr = -2; dr <= 2; ++dr) {
+            for (int dc = -2; dc <= 2; ++dc) {
+                if (std::abs(dr) <= 1 && std::abs(dc) <= 1) continue;
+                const int nr = br + dr;
+                const int nc = bc + dc;
+                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                ++ctx.twoHopBurning[nr * cols + nc];
+            }
+        }
+    }
+
+    std::vector<char> unburnedLand(nCells, 0);
+    for (int i = 0; i < nCells; ++i) {
+        unburnedLand[i] = (statusCells[i] == 0 && !ctx.burning[i] && !ctx.burnedOut[i]) ? 1 : 0;
+    }
+    ctx.reachableArea.assign(nCells, 0);
+    std::vector<char> seen(nCells, 0);
+    std::vector<int> members;
+    std::deque<int> queue;
+    for (int start = 0; start < nCells; ++start) {
+        if (!unburnedLand[start] || seen[start]) continue;
+        members.clear();
+        seen[start] = 1;
+        queue.push_back(start);
+        while (!queue.empty()) {
+            const int cur = queue.front();
+            queue.pop_front();
+            members.push_back(cur);
+            const int r = cur / cols;
+            const int c = cur % cols;
+            for (int k = 0; k < 8; ++k) {
+                const int nr = r + DR8[k];
+                const int nc = c + DC8[k];
+                if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                const int nIdx = nr * cols + nc;
+                if (seen[nIdx] || !unburnedLand[nIdx]) continue;
+                seen[nIdx] = 1;
+                queue.push_back(nIdx);
+            }
+        }
+        for (int m : members) ctx.reachableArea[m] = static_cast<int>(members.size());
+    }
+}
+
 FeatureContext buildFeatureContext(const std::vector<int>& statusCells,
                                    const std::unordered_set<int>& burningCells,
                                    const std::unordered_set<int>& burntCells,
@@ -302,7 +378,8 @@ FeatureContext buildFeatureContext(const std::vector<int>& statusCells,
                                    const std::vector<double>& elevations,
                                    const std::vector<double>& slopes,
                                    const weatherDF& weather,
-                                   int rows, int cols) {
+                                   int rows, int cols,
+                                   bool rlFeatures) {
     const int nCells = rows * cols;
     FeatureContext ctx;
     ctx.rows = rows;
@@ -385,6 +462,13 @@ FeatureContext buildFeatureContext(const std::vector<int>& statusCells,
     const double waz_rad = static_cast<double>(weather.waz) * DEG2RAD;
     ctx.wind_x = std::sin(waz_rad);
     ctx.wind_y = std::cos(waz_rad);
+
+    ctx.rlFeatures = rlFeatures;
+    ctx.windSpeed = static_cast<double>(weather.ws);
+    ctx.nBurning = static_cast<int>(ctx.burningIdx.size());
+    ctx.nBurnedOut = 0;
+    ctx.nTreated = 0;
+    if (rlFeatures) addLearnedPolicyContext(ctx, statusCells);
     return ctx;
 }
 
@@ -456,7 +540,60 @@ Features computeFeatures(const FeatureContext& ctx, int idx) {
     f.unburned_neighbour_count   = static_cast<double>(unburned_count);
     f.elevation_delta_to_fire    = (bestFireIdx >= 0 && bestFireIdx != idx)
                                    ? elevations[idx] - elevations[bestFireIdx] : 0.0;
+
+    f.burning_two_hop_count   = 0.0;
+    f.reachable_unburned_area = 0.0;
+    f.wind_speed              = 0.0;
+    f.fuel_moisture           = 0.0;
+    f.total_burning           = 0.0;
+    f.total_burned            = 0.0;
+    f.total_unburned          = 0.0;
+    f.total_treated           = 0.0;
+    if (ctx.rlFeatures) {
+        const int nCells = rows * cols;
+        f.burning_two_hop_count   = static_cast<double>(ctx.twoHopBurning[idx]);
+        f.reachable_unburned_area = static_cast<double>(ctx.reachableArea[idx]);
+        f.wind_speed              = ctx.windSpeed;
+        f.fuel_moisture           = RL_FUEL_MOISTURE;
+        f.total_burning           = static_cast<double>(ctx.nBurning);
+        f.total_burned            = static_cast<double>(ctx.nBurnedOut);
+        f.total_unburned          = static_cast<double>(nCells - ctx.nBurning - ctx.nBurnedOut - ctx.nTreated);
+        f.total_treated           = static_cast<double>(ctx.nTreated);
+    }
     return f;
+}
+
+void rlInputVector(const Features& f, const FeatureContext& ctx, int referenceCells, float out[RL_N_FEATURES]) {
+    const double sentinel = static_cast<double>(std::max(ctx.rows, ctx.cols));
+    const double scale = (referenceCells > 0)
+                         ? static_cast<double>(referenceCells) / static_cast<double>(ctx.rows * ctx.cols) : 1.0;
+    const double distance = std::isfinite(f.distance_to_fire) ? f.distance_to_fire : sentinel;
+    const double burnableDistance = std::isfinite(f.burnable_distance_to_fire) ? f.burnable_distance_to_fire : sentinel;
+    const double values[RL_N_FEATURES] = {
+        f.fuel_level,
+        f.elevation,
+        f.slope,
+        f.mean_neighbour_elevation,
+        f.mean_neighbour_fuel,
+        f.burning_neighbour_count,
+        f.burning_two_hop_count,
+        f.unburned_neighbour_count,
+        f.unburnable_neighbour_count,
+        f.has_treated_neighbour,
+        f.treated_neighbour_count,
+        distance,
+        burnableDistance,
+        f.reachable_unburned_area * scale,
+        f.wind_fire_alignment,
+        f.elevation_delta_to_fire,
+        f.wind_speed,
+        f.fuel_moisture,
+        f.total_burning * scale,
+        f.total_burned * scale,
+        f.total_unburned * scale,
+        f.total_treated * scale,
+    };
+    for (int i = 0; i < RL_N_FEATURES; ++i) out[i] = static_cast<float>(values[i]);
 }
 
 int ApplyTreatments(std::unordered_set<int>& availCells,
@@ -472,13 +609,22 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
                     int budget,
                     const std::string& strategy,
                     std::default_random_engine& generator,
-                    int minDist) {
+                    int minDist,
+                    int rlReferenceCells) {
     if (strategy == "none") return 0;
+    const bool isRL = (strategy == "rl");
+#ifndef WILDFIRE_RL_SCORER
+    if (isRL) {
+        std::cerr << "TreatmentStrategy rl requires a build with a learned-policy scorer: "
+                     "make RL_SCORER=/path/to/scorer.h (see README)." << std::endl;
+        std::exit(1);
+    }
+#endif
     if (budget <= 0 || availCells.empty() || burningCells.empty()) return 0;
 
     const double INF = std::numeric_limits<double>::infinity();
     const FeatureContext ctx = buildFeatureContext(statusCells, burningCells, burntCells, fuelLevels, elevations,
-                                                   slopes, weather, rows, cols);
+                                                   slopes, weather, rows, cols, isRL);
     const std::vector<int>& burnableDist = ctx.burnableDist;
 
     if (strategy == "random") {
@@ -543,6 +689,9 @@ int ApplyTreatments(std::unordered_set<int>& availCells,
         else if (strategy == "ga_nodist")        s = scoreGaleNoDist(f);
         else if (strategy == "oa_gated")         s = scoreOpenAnchorGated(f);
         else if (strategy == "oa_simplified")    s = scoreOpenAnchorSimplified(f);
+#ifdef WILDFIRE_RL_SCORER
+        else if (isRL)                           s = scoreRL(f, ctx, rlReferenceCells);
+#endif
         else                                     s = scoreFuelElevation(f);
         return std::isfinite(s) ? s : -INF;
     };

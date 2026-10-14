@@ -4,7 +4,9 @@ The evolved policies were trained on wildfireGP's feature definitions (``wildfir
 compute the same values from the same fire state. Each test builds a wildfireGP fire state with burning, burned,
 treated, water and rock cells, converts it to Cell2Fire's representation (fire state in burningCells/burntCells,
 statusCells 5 = treated and 4 = non-fuel, static fuel), runs ``feature_parity/feature_dump.cpp`` on it, and compares
-one feature over every treatment candidate.
+one feature over every treatment candidate. The learned-policy (RL) input vector is checked the same way against
+``wildfireGP.rl.features.extract_features``: exactly with rescaling off, and with only the size-dependent features
+rescaled when a reference cell count is given.
 
 wildfireGP is imported from ``$WILDFIREGP_PATH`` or a sibling ``wildfireGP`` checkout; run with an interpreter that has
 its dependencies, e.g. ``../wildfireGP/venv/bin/python -m pytest tests/test_feature_parity.py``. The harness is
@@ -30,6 +32,8 @@ wfgp_features = pytest.importorskip("wildfireGP.features")
 from wildfireGP.evaluate import init_ignition  # noqa: E402
 from wildfireGP.network import NodeState, TerrainType, create_grid  # noqa: E402
 from wildfireGP.spread import spread_step  # noqa: E402
+
+wfgp_rl_features = pytest.importorskip("wildfireGP.rl.features")
 
 FEATURES = [
     "fuel_level",
@@ -59,6 +63,10 @@ STATES = [
 
 ROWS = 30
 COLS = 30
+
+RL_FEATURES = list(wfgp_rl_features.FEATURE_ORDER)
+RL_SIZE_FEATURES = {"reachable_unburned_area", "total_burning", "total_burned", "total_unburned", "total_treated"}
+REFERENCE_CELLS = 2500
 
 
 @functools.lru_cache(maxsize=1)
@@ -112,13 +120,13 @@ def build_wildfiregp_state(seed: int, water: float, rock: float, wind_dir: int, 
     return state, pristine_fuel
 
 
-def cell2fire_features(state, pristine_fuel, wind_dir: int) -> np.ndarray:
+def cell2fire_features(state, pristine_fuel, wind_dir: int, reference_cells: int = 0) -> np.ndarray:
     status = np.zeros(state.state.shape, dtype=int)
     status[state.state == NodeState.TREATED] = 5
     status[state.terrain != TerrainType.LAND] = 4
     burning = (state.state == NodeState.BURNING).astype(int)
     burned_out = (state.state == NodeState.BURNED).astype(int)
-    lines = [f"{ROWS} {COLS} {wind_dir}"]
+    lines = [f"{ROWS} {COLS} {wind_dir} {float(state.wind_speed)!r} {reference_cells}"]
     for r in range(ROWS):
         for c in range(COLS):
             lines.append(
@@ -151,8 +159,41 @@ def comparison(state_index: int) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     return out
 
 
+@functools.lru_cache(maxsize=None)
+def rl_comparison(state_index: int, reference_cells: int) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Return {feature: (wildfireGP.rl value, Cell2Fire value)} over treatment candidates."""
+    seed, water, rock, wind_dir, wind_speed, steps = STATES[state_index]
+    state, pristine_fuel = build_wildfiregp_state(seed, water, rock, wind_dir, wind_speed, steps)
+    ported = cell2fire_features(state, pristine_fuel, wind_dir, reference_cells)[:, len(FEATURES) :]
+    wfgp_rl_features.run_precomputes(state)
+    expected_all = wfgp_rl_features.extract_features(state)
+    flat = [
+        int(r) * COLS + int(c)
+        for r, c in np.argwhere(
+            (state.state == NodeState.UNBURNED) & (state.terrain == TerrainType.LAND) & (state.fuel > 0.0)
+        )
+    ]
+    return {name: (expected_all[flat, j], ported[flat, j]) for j, name in enumerate(RL_FEATURES)}
+
+
 @pytest.mark.parametrize("feature", FEATURES)
 @pytest.mark.parametrize("state_index", range(len(STATES)))
 def test_feature_matches_wildfiregp(state_index: int, feature: str) -> None:
     expected, actual = comparison(state_index)[feature]
     assert np.allclose(actual, expected, rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize("feature", RL_FEATURES)
+@pytest.mark.parametrize("state_index", range(len(STATES)))
+def test_rl_input_matches_wildfiregp(state_index: int, feature: str) -> None:
+    expected, actual = rl_comparison(state_index, 0)[feature]
+    assert np.allclose(actual, expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("feature", RL_FEATURES)
+@pytest.mark.parametrize("state_index", range(len(STATES)))
+def test_reference_cells_rescales_only_size_features(state_index: int, feature: str) -> None:
+    raw = rl_comparison(state_index, 0)[feature][1]
+    scaled = rl_comparison(state_index, REFERENCE_CELLS)[feature][1]
+    factor = REFERENCE_CELLS / (ROWS * COLS) if feature in RL_SIZE_FEATURES else 1.0
+    assert np.allclose(scaled, raw * factor, rtol=1e-6, atol=1e-6)

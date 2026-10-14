@@ -18,7 +18,7 @@ typedef struct{
 	bool OutMessages, Trajectories, NoOutput, verbose, Ignitions, OutputGrids, FinalGrid, PromTuned, Stats, BBOTuning;
 	float ROSCV, ROSThreshold, HFIThreshold, HFactor, FFactor, BFactor, EFactor, FirePeriodLen;
 	int MinutesPerWP, MaxFirePeriods, TotalYears, TotalSims, NWeatherFiles, IgnitionRadius, SpreadRadius, seed;
-	int TreatmentBudget, TreatmentDelay, TreatmentMinDist;
+	int TreatmentBudget, TreatmentDelay, TreatmentMinDist, RLReferenceCells;
 	std::string TreatmentStrategy;
 	std::unordered_set<int>  HCells, BCells;
 } arguments;

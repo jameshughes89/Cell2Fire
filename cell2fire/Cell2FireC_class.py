@@ -78,6 +78,7 @@ class Cell2FireC:
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
                    '--TreatmentStrategy', self.args.TreatmentStrategy,
                    '--TreatmentMinDist', str(int(self.args.TreatmentMinDist)),
+                   '--RLReferenceCells', str(int(self.args.RLReferenceCells)),
                    '--max-fire-periods', str(int(self.args.max_fire_periods)),
 				   '--verbose' if (self.args.verbose) else '',]
         
@@ -127,6 +128,7 @@ class Cell2FireC:
                    '--TreatmentDelay', str(int(self.args.TreatmentDelay)),
                    '--TreatmentStrategy', self.args.TreatmentStrategy,
                    '--TreatmentMinDist', str(int(self.args.TreatmentMinDist)),
+                   '--RLReferenceCells', str(int(self.args.RLReferenceCells)),
 				   '--verbose' if (self.args.verbose) else '']
         
         # Output log

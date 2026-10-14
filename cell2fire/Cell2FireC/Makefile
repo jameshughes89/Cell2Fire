@@ -4,6 +4,11 @@ CC = g++
 MPCC = g++
 OPENMP = -openmp
 CFLAGS = -std=c++11 -O3 -I$(EIGENDIR)
+# Optional learned-policy scorer for TreatmentStrategy rl: make RL_SCORER=/absolute/path/to/scorer.h (see README).
+# Run `make clean` when adding, removing, or changing it.
+ifneq ($(RL_SCORER),)
+CFLAGS += -DWILDFIRE_RL_SCORER='"$(RL_SCORER)"'
+endif
 LIBS = -m64 -fPIC -fno-strict-aliasing -fexceptions -DNDEBUG -DIL_STD -lm -lpthread -ldl
 
 TARGETS = Cell2Fire

@@ -309,7 +309,7 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 	}
 	else args_ptr->TreatmentDelay = 0;
 
-	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | cell1_baseline | cell2_ground | cell3_lowonly | cell4_highonly | cell5_hilly | cell6_barriers | cell7_cranked | fuel_only | burning_nbrs | head_fire | fire_run | flank_attack | composite_threat | ridgeline | indirect_attack | anchor_flank | frontier_protect | frontier_anchored | uphill_intercept | random | none)
+	//--TreatmentStrategy  (string: fuel_elevation | neighbour_fuel | proximity | shielded_ratio | open_anchor | fuel_flank | cell1_baseline | cell2_ground | cell3_lowonly | cell4_highonly | cell5_hilly | cell6_barriers | cell7_cranked | fuel_only | burning_nbrs | head_fire | fire_run | flank_attack | composite_threat | ridgeline | indirect_attack | anchor_flank | frontier_protect | frontier_anchored | uphill_intercept | rl | random | none)
 	char * tstrategy = getCmdOption(argv, argv + argc, "--TreatmentStrategy");
 	if (tstrategy){
 		printf("TreatmentStrategy: %s \n", tstrategy);
@@ -324,6 +324,15 @@ void parseArgs(int argc, char * argv[], arguments * args_ptr)
 		args_ptr->TreatmentMinDist = std::stoi(tmindist, &sz);
 	}
 	else args_ptr->TreatmentMinDist = 0;
+
+	//--RLReferenceCells  (int, cell count of the wildfireGP grid a learned "rl" policy was trained on; its size-dependent
+	//  features are rescaled to that grid. Default 2500 = 50x50; 0 disables rescaling. Unused by other strategies.)
+	char * trlref = getCmdOption(argv, argv + argc, "--RLReferenceCells");
+	if (trlref){
+		printf("RLReferenceCells: %s \n", trlref);
+		args_ptr->RLReferenceCells = std::stoi(trlref, &sz);
+	}
+	else args_ptr->RLReferenceCells = 2500;
 
 	// Populate structure
 	// Strings 
