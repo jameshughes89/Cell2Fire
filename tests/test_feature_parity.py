@@ -65,8 +65,6 @@ ROWS = 30
 COLS = 30
 
 RL_FEATURES = list(wfgp_rl_features.FEATURE_ORDER)
-# fuel_moisture is a constant on both sides, so comparing it checks nothing.
-RL_COMPARED = [name for name in RL_FEATURES if name != "fuel_moisture"]
 RL_SIZE_FEATURES = {"reachable_unburned_area", "total_burning", "total_burned", "total_unburned", "total_treated"}
 REFERENCE_CELLS = 2500
 
@@ -185,14 +183,14 @@ def test_feature_matches_wildfiregp(state_index: int, feature: str) -> None:
     assert np.allclose(actual, expected, rtol=1e-9, atol=1e-9)
 
 
-@pytest.mark.parametrize("feature", RL_COMPARED)
+@pytest.mark.parametrize("feature", RL_FEATURES)
 @pytest.mark.parametrize("state_index", range(len(STATES)))
 def test_rl_input_matches_wildfiregp(state_index: int, feature: str) -> None:
     expected, actual = rl_comparison(state_index, 0)[feature]
     assert np.allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
-@pytest.mark.parametrize("feature", RL_COMPARED)
+@pytest.mark.parametrize("feature", RL_FEATURES)
 @pytest.mark.parametrize("state_index", range(len(STATES)))
 def test_reference_cells_rescales_only_size_features(state_index: int, feature: str) -> None:
     raw = rl_comparison(state_index, 0)[feature][1]
