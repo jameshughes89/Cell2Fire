@@ -40,3 +40,13 @@ tests/feature_parity/build/
 # AI-assistant working notes (kept locally, not part of the project)
 CLAUDE.md
 .claude/
+
+# Local analysis output: result tables, logs, figures, and named binary builds
+/*.csv
+/*.png
+/*.pdf
+*.log
+figures/
+results_*/
+scratch/ablation_check/
+cell2fire/Cell2FireC/Cell2Fire_*
